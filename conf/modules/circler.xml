@@ -1,0 +1,30 @@
+<!DOCTYPE module SYSTEM "module.dtd">
+
+<module name="circler" dir="my_first_module">
+  <doc>
+    <description>
+This module is a test module made by Lilly Zwikker. It attempts to fly the bepop drone in a large circle.
+    </description>
+  </doc>
+<!--  <settings>-->
+<!--    <dl_settings>-->
+<!--      <dl_settings name="Circler">-->
+<!--         <dl_setting var="set_speed" min="0" step="0.5" max="15"/>-->
+<!--        <dl_setting var="set_radius" min="0" step="0.25" max="3"/>-->
+<!--         <dl_setting var="k_radius" min="0" step="0.1" max="1"/>-->
+<!--      </dl_settings>-->
+<!--    </dl_settings>-->
+<!--  </settings>-->
+  
+<!--  <dep>-->
+<!--    <depends>cv_detect_color_object</depends>-->
+<!--  </dep>-->
+  <header>
+    <file name="circler.h"/>
+  </header>
+  <init fun="circler_init()"/>
+  <periodic fun="circler_periodic()" freq="4"/>
+  <makefile target="ap|nps">
+    <file name="circler.c"/>
+  </makefile>
+</module>

@@ -3,24 +3,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 from os import walk
 import pandas as pd
-from scipy.signal import correlate2d
 
 file_names = []
-for _, _, file_names in walk("..\\..\\AE4317_2019_datasets\\cyberzoo_poles\\20190121-135009"):
+for _, _, file_names in walk("../data/dataset/AE4317_2019_datasets/cyberzoo_poles/20190121-135009"):
     # print(file_names)
     break
 
 
 images = []
 for file_name in file_names:
-    with Image.open(f"..\\..\\AE4317_2019_datasets\\cyberzoo_poles\\20190121-135009\\{file_name}") as image_file:
+    with Image.open(f"../data/dataset/AE4317_2019_datasets/cyberzoo_poles/20190121-135009/{file_name}") as image_file:
         images.append({'img': np.array(image_file.rotate(90, expand=True)), 'time': float(file_name.removesuffix('.jpg'))/(10**6)})
 
 images = sorted(images, key=lambda x: x['time'])
 
 image_size = images[0]['img'].shape
 
-with open("..\\..\\AE4317_2019_datasets\\cyberzoo_poles\\20190121-135121.csv") as csv_file:
+with open("../data/dataset/AE4317_2019_datasets/cyberzoo_poles/20190121-135121.csv") as csv_file:
     dataframe = pd.read_csv(csv_file)
 
 print(dataframe)
@@ -116,7 +115,7 @@ def correlate_line(image, kernel_source, kernel_size, start_x, start_y, end_x, e
                          :]
         kernel = kernel / np.linalg.norm(kernel)
         for j in range(amount_of_line_points):
-            # if abs(j - i) < 10:
+            # if abs(i - j) < 20:
             image_slice = image[
                           int(x_positions[j] - kernel_extend[0]):int(x_positions[j] + kernel_extend[0]),
                           int(y_positions[j] - kernel_extend[1]):int(y_positions[j] + kernel_extend[1]),
@@ -157,20 +156,20 @@ def sweep_around(center_point, image, kernel_source, kernel_size=(10, 10),
     kernel_extend = (int(np.floor((kernel_size[0] / 2))), int(np.floor((kernel_size[1] / 2))))
 
     # Brute force sweep
-    # TODO make neater
+    # TODO make neater and divide more equally over image
     end_points = []
-    i = kernel_extend[0]
-    j = kernel_extend[1]
-    while i < image.shape[0] - kernel_extend[0]:
+    i = 5 * kernel_extend[0]
+    j = 5 * kernel_extend[1]
+    while i < image.shape[0] - 5 * kernel_extend[0]:
         end_points.append((i, j))
         i += sweep_resolution
-    while j < image.shape[1] - kernel_extend[1]:
+    while j < image.shape[1] - 5 * kernel_extend[1]:
         end_points.append((i, j))
         j += sweep_resolution
-    while i > kernel_extend[0]:
+    while i > 5 * kernel_extend[0]:
         end_points.append((i, j))
         i -= sweep_resolution
-    while j > kernel_extend[1]:
+    while j > 5 * kernel_extend[1]:
         end_points.append((i, j))
         j -= sweep_resolution
     print(len(end_points))
@@ -193,10 +192,10 @@ plt.imshow(images[current_image + 1]['img'], alpha=0.5)
 # TEST CORRELATE LINE
 line_start = (15, 15)
 line_end = (125, 300)
-kernel_size = (20, 20)
+kernel_size = (4, 4)
 
 line_result = correlate_line(images[current_image + 1]['img'], images[current_image]['img'], kernel_size,
-                             line_start[0], line_start[1], line_end[0], line_end[1], step=5, logarithmic_spacing=False)
+                             line_start[0], line_start[1], line_end[0], line_end[1], step=2, logarithmic_spacing=False)
 plt.show()
 
 fig = plt.figure(figsize=(6, 6), layout='constrained')
@@ -206,7 +205,7 @@ plt.show()
 
 # TEST CORRELATE SWEEP
 test_center_point = (100, 100)
-test_kernel_size = (20, 20)
+test_kernel_size = (4, 4)
 
 
 fig = plt.figure(figsize=(8, 4), layout='constrained')
@@ -215,14 +214,16 @@ plt.imshow(images[current_image]['img'], alpha=0.5)
 plt.imshow(images[current_image + 1]['img'], alpha=0.5)
 
 sweep_result = sweep_around(test_center_point, images[current_image + 1]['img'], images[current_image]['img'],
-                            test_kernel_size, sweep_resolution=10, line_resolution=10)
+                            test_kernel_size, sweep_resolution=20, line_resolution=2)
 
 plt.show()
 
-fig = plt.figure(figsize=(6, 6), layout='constrained')
-plt.title(f"Line Correlation result from {line_start} to {line_end}")
-plt.imshow(sweep_result[10][0])
-plt.show()
+print(len(sweep_result))
+for line in [0, 10, 20, 30, 40, 50, 60]:
+    fig = plt.figure(figsize=(6, 6), layout='constrained')
+    plt.title(f"Line Correlation result of Line {line}")
+    plt.imshow(sweep_result[line][0])
+    plt.show()
 
 # # Correlation EXAMPLE
 # x = 100

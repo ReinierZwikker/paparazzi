@@ -19,12 +19,12 @@ test_kernel_size = (4, 4)
 
 # == Loading dataset ==
 file_names = []
-for _, _, file_names in walk("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190121-142935"):
+for _, _, file_names in walk("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20240304_113603"):
     break
 
 images = []
 for file_name in file_names:
-    with Image.open(f"../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190121-142935/{file_name}") as image_file:
+    with Image.open(f"../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20240304_113603/{file_name}") as image_file:
         images.append({'img': np.array(image_file.rotate(90, expand=True)), 'time': float(file_name.removesuffix('.jpg'))/(10**6), 'name': file_name})
 
 images = sorted(images, key=lambda x: x['time'])

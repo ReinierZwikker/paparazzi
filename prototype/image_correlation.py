@@ -11,11 +11,13 @@ import datetime
 from image_corr_funcs import correlate_line, sweep_around, find_depth
 
 # SETTINGS
-plot_images = False
-save_images = True
-selected_images = 'all'  # 'all' or specific [###, ###, ..., ###]
+plot_images = True
+save_images = False
+selected_images = [230]  # 'all'  # 'all' or specific [###, ###, ..., ###]
 test_center_point = (120, 255)
 test_kernel_size = (4, 4)
+sweep_resolution = 20
+line_resolution = 2
 
 # == Loading dataset ==
 file_names = []
@@ -126,7 +128,7 @@ for current_image in selected_images:
         plt.imshow(images[current_image + 1]['img'], alpha=0.5)
 
     sweep_result = sweep_around(test_center_point, images[current_image + 1]['img'], images[current_image]['img'],
-                                test_kernel_size, sweep_resolution=20, line_resolution=10,
+                                test_kernel_size, sweep_resolution=sweep_resolution, line_resolution=line_resolution,
                                 plot=plot_images or save_images)
 
     if plot_images:

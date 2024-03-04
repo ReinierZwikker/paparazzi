@@ -10,7 +10,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, base_path: str = "../data/renders"):
         self.base_path: str = base_path
-        self.date: str = "20240304_113603"
+        self.date: str = "20240304_115754"
         self.image_paths: list = self.load_directory()
         self.selected_image: str = "Select Image"
         self.image_list: list = ["original", "mixed", "squares", "depth", "confidence", "combined", "blur"]
@@ -141,7 +141,8 @@ class MainWindow(QMainWindow):
         self.outer_layout.addWidget(self.button_widget)
         self.outer_layout.addWidget(self.picture_widget)
         self.setCentralWidget(self.central_label)
-        self.resize(650, 300)
+        # self.resize(2300, 1200)
+
 
     def change_image(self):
         for i, image_folder in enumerate(self.image_list):

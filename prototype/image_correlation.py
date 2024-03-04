@@ -5,26 +5,26 @@ from os import walk
 import pandas as pd
 
 file_names = []
-for _, _, file_names in walk("../data/dataset/AE4317_2019_datasets/cyberzoo_poles/20190121-135009"):
+for _, _, file_names in walk("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190121-142935"):
     # print(file_names)
     break
 
 
 images = []
 for file_name in file_names:
-    with Image.open(f"../data/dataset/AE4317_2019_datasets/cyberzoo_poles/20190121-135009/{file_name}") as image_file:
+    with Image.open(f"../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190121-142935/{file_name}") as image_file:
         images.append({'img': np.array(image_file.rotate(90, expand=True)), 'time': float(file_name.removesuffix('.jpg'))/(10**6)})
 
 images = sorted(images, key=lambda x: x['time'])
 
 image_size = images[0]['img'].shape
 
-with open("../data/dataset/AE4317_2019_datasets/cyberzoo_poles/20190121-135121.csv") as csv_file:
+with open("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190121-142943.csv") as csv_file:
     dataframe = pd.read_csv(csv_file)
 
 print(dataframe)
 
-current_image = 297
+current_image = 321
 
 print(images[current_image]['time'])
 
@@ -157,6 +157,8 @@ def sweep_around(center_point, image, kernel_source, kernel_size=(10, 10),
 
     # Brute force sweep
     # TODO make neater and divide more equally over image
+    # 5* offset temporary to make sure we never overrun
+    # the boundaries of the image, not for final algorithm!
     end_points = []
     i = 5 * kernel_extend[0]
     j = 5 * kernel_extend[1]
@@ -184,27 +186,41 @@ def sweep_around(center_point, image, kernel_source, kernel_size=(10, 10),
     return results
 
 
+def find_depth(radial_sweep_result, depth_map, confidence_map):
+    """
+
+    :param radial_sweep_result: result of one radial sweep, as (result, x_positions, y_positions)
+    :param depth_map: 2D depth map of image, in meters
+    :param confidence_map: 2D confidence map of the depth map
+    :return: modified depth_image
+    """
+    for i in range(radial_sweep_result[0].shape[0]):
+        max_index = np.argmax(radial_sweep_result[0][i, :])
+        depth_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = 255 * 1 / (max(abs(i - max_index), 1))
+        confidence_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = 2550 * (1 - np.sum(radial_sweep_result[0][i, :]) / radial_sweep_result[0].shape[0])
+    return depth_map, confidence_map
+
 fig = plt.figure(figsize=(8, 4), layout='constrained')
 plt.title(str(images[10]['time']) + " + " + str(images[11]['time']))
 plt.imshow(images[current_image]['img'], alpha=0.5)
 plt.imshow(images[current_image + 1]['img'], alpha=0.5)
 
 # TEST CORRELATE LINE
-line_start = (15, 15)
-line_end = (125, 300)
-kernel_size = (4, 4)
-
-line_result = correlate_line(images[current_image + 1]['img'], images[current_image]['img'], kernel_size,
-                             line_start[0], line_start[1], line_end[0], line_end[1], step=2, logarithmic_spacing=False)
-plt.show()
-
-fig = plt.figure(figsize=(6, 6), layout='constrained')
-plt.title(f"Line Correlation result from {line_start} to {line_end}")
-plt.imshow(line_result[0])
+# line_start = (15, 15)
+# line_end = (125, 300)
+# kernel_size = (4, 4)
+#
+# line_result = correlate_line(images[current_image + 1]['img'], images[current_image]['img'], kernel_size,
+#                              line_start[0], line_start[1], line_end[0], line_end[1], step=2, logarithmic_spacing=False)
+# plt.show()
+#
+# fig = plt.figure(figsize=(6, 6), layout='constrained')
+# plt.title(f"Line Correlation result from {line_start} to {line_end}")
+# plt.imshow(line_result[0])
 plt.show()
 
 # TEST CORRELATE SWEEP
-test_center_point = (100, 100)
+test_center_point = (120, 255)
 test_kernel_size = (4, 4)
 
 
@@ -214,16 +230,37 @@ plt.imshow(images[current_image]['img'], alpha=0.5)
 plt.imshow(images[current_image + 1]['img'], alpha=0.5)
 
 sweep_result = sweep_around(test_center_point, images[current_image + 1]['img'], images[current_image]['img'],
-                            test_kernel_size, sweep_resolution=20, line_resolution=2)
+                            test_kernel_size, sweep_resolution=20, line_resolution=10)
 
 plt.show()
 
-print(len(sweep_result))
-for line in [0, 10, 20, 30, 40, 50, 60]:
-    fig = plt.figure(figsize=(6, 6), layout='constrained')
-    plt.title(f"Line Correlation result of Line {line}")
-    plt.imshow(sweep_result[line][0])
-    plt.show()
+# for line in [0, 10, 20, 30, 40, 50, 60]:
+#     fig = plt.figure(figsize=(6, 6), layout='constrained')
+#     plt.title(f"Line Correlation result of Line {line}")
+#     plt.imshow(sweep_result[line][0])
+#     plt.show()
+
+
+depth_map = np.zeros_like(images[current_image]['img'])
+confidence_map = np.zeros_like(images[current_image]['img'])
+
+for line in sweep_result:
+    depth_map, confidence_map = find_depth(line, depth_map, confidence_map)
+
+fig = plt.figure(figsize=(8, 4), layout='constrained')
+plt.title(f"Depth Map")
+plt.imshow(depth_map)
+plt.show()
+
+fig = plt.figure(figsize=(8, 4), layout='constrained')
+plt.title(f"Confidence Map")
+plt.imshow(confidence_map)
+plt.show()
+
+fig = plt.figure(figsize=(8, 4), layout='constrained')
+plt.title(f"Depth * Confidence Map")
+plt.imshow(depth_map * confidence_map / 255)
+plt.show()
 
 # # Correlation EXAMPLE
 # x = 100

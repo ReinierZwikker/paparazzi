@@ -10,7 +10,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, base_path: str = "../data/renders"):
         self.base_path: str = base_path
-        self.date: str = "20240304_115754"
+        self.date: str = "20240304_135403"
         self.image_paths: list = self.load_directory()
         self.selected_image: str = "Select Image"
         self.image_list: list = ["original", "mixed", "squares", "depth", "confidence", "combined", "blur"]

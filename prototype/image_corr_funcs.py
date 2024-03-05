@@ -2,6 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+def bound(value, lower, upper):
+    return max(lower, min(upper, value))
+
+
 def correlate_line(image, kernel_source, kernel_size,
                    start_x, start_y, end_x, end_y, step=1,
                    logarithmic_spacing=True, plot=False):
@@ -40,16 +44,16 @@ def correlate_line(image, kernel_source, kernel_size,
                          :]
         kernel = kernel / np.linalg.norm(kernel)
         for j in range(amount_of_line_points):
-            # if abs(i - j) < 20:
-            image_slice = image[
-                          int(x_positions[j] - kernel_extend[0]):int(x_positions[j] + kernel_extend[0]),
-                          int(y_positions[j] - kernel_extend[1]):int(y_positions[j] + kernel_extend[1]),
-                          :]
-            image_slice = image_slice / np.linalg.norm(image_slice)
-            results[i, j] = np.sum(np.multiply(image_slice,
-                                               kernel))
-            # results[i, i-j]
-            # print(f"({x_positions[i]}, {y_positions[i]}): {results[i, j]}")
+            if abs(i - j) < 10:
+                image_slice = image[
+                              int(x_positions[j] - kernel_extend[0]):int(x_positions[j] + kernel_extend[0]),
+                              int(y_positions[j] - kernel_extend[1]):int(y_positions[j] + kernel_extend[1]),
+                              :]
+                image_slice = image_slice / np.linalg.norm(image_slice)
+                results[i, j] = np.sum(np.multiply(image_slice,
+                                                   kernel))
+                # results[i, i-j]
+                # print(f"({x_positions[i]}, {y_positions[i]}): {results[i, j]}")
     if plot:
         plt.plot(y_positions, x_positions, 'rs', linestyle='none', markerfacecolor='none', markersize=kernel_size[0])
 
@@ -81,26 +85,35 @@ def sweep_around(center_point, image, kernel_source, kernel_size=(10, 10),
     # TODO implement rotation and kernel center point
     kernel_extend = (int(np.floor((kernel_size[0] / 2))), int(np.floor((kernel_size[1] / 2))))
 
+    # ======
     # Brute force sweep
     # TODO make neater and divide more equally over image
     # 5* offset temporary to make sure we never overrun
     # the boundaries of the image, not for final algorithm!
-    end_points = []
-    i = 5 * kernel_extend[0]
-    j = 5 * kernel_extend[1]
-    while i < image.shape[0] - 5 * kernel_extend[0]:
-        end_points.append((i, j))
-        i += sweep_resolution
-    while j < image.shape[1] - 5 * kernel_extend[1]:
-        end_points.append((i, j))
-        j += sweep_resolution
-    while i > 5 * kernel_extend[0]:
-        end_points.append((i, j))
-        i -= sweep_resolution
-    while j > 5 * kernel_extend[1]:
-        end_points.append((i, j))
-        j -= sweep_resolution
+    # ======
+    # end_points = []
+    # i = 5 * kernel_extend[0]
+    # j = 5 * kernel_extend[1]
+    # while i < image.shape[0] - 5 * kernel_extend[0]:
+    #     end_points.append((i, j))
+    #     i += sweep_resolution
+    # while j < image.shape[1] - 5 * kernel_extend[1]:
+    #     end_points.append((i, j))
+    #     j += sweep_resolution
+    # while i > 5 * kernel_extend[0]:
+    #     end_points.append((i, j))
+    #     i -= sweep_resolution
+    # while j > 5 * kernel_extend[1]:
+    #     end_points.append((i, j))
+    #     j -= sweep_resolution
 
+    # Circular Sweep
+    end_points = []
+    for angle in range(0, 360, sweep_resolution):
+        angle_rad = angle / 180 * np.pi
+        print(angle, angle_rad)
+        end_points.append([int(120+110*np.cos(angle_rad)),
+                           int(260+250*np.sin(angle_rad))])
     results = []
 
     for end_point in end_points:

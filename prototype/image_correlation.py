@@ -11,22 +11,22 @@ import datetime
 from image_corr_funcs import correlate_line, sweep_around, find_depth
 
 # SETTINGS
-plot_images = True
-save_images = False
-selected_images = [230]  # 'all'  # 'all' or specific [###, ###, ..., ###]
+plot_images = False
+save_images = True
+selected_images = 'all'  # 'all' or specific [###, ###, ..., ###] or range(start, stop, step)
 test_center_point = (120, 255)
 test_kernel_size = (4, 4)
-sweep_resolution = 20
-line_resolution = 2
+sweep_resolution = 10
+line_resolution = 1
 
 # == Loading dataset ==
 file_names = []
-for _, _, file_names in walk("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20240304_113603"):
+for _, _, file_names in walk("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190121-142935"):
     break
 
 images = []
 for file_name in file_names:
-    with Image.open(f"../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20240304_113603/{file_name}") as image_file:
+    with Image.open(f"../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190121-142935/{file_name}") as image_file:
         images.append({'img': np.array(image_file.rotate(90, expand=True)), 'time': float(file_name.removesuffix('.jpg'))/(10**6), 'name': file_name})
 
 images = sorted(images, key=lambda x: x['time'])
@@ -105,6 +105,7 @@ for current_image in selected_images:
         Image.fromarray(images[current_image]['img'], mode='RGB').save(f"{current_render_folder}/original/{current_image_name}")
         plt.imsave(f"{current_render_folder}/mixed/{current_image_name}",
                    (images[current_image]['img'] * 0.5 + images[current_image + 1]['img'] * 0.5).astype(np.uint8))
+        plt.close()
 
     # == Test single line ==
     # TEST CORRELATE LINE
@@ -136,7 +137,7 @@ for current_image in selected_images:
         plt.show()
     if save_images:
         plt.axis('off')
-        plt.savefig(f"{current_render_folder}/squares/{current_image_name}", bbox_inches='tight', pad_inches=0)
+        plt.savefig(f"{current_render_folder}/squares/{current_image_name}", bbox_inches='tight', pad_inches=0, dpi=68)
 
     # == Show sample lines ==
     # if plot_images:
@@ -153,7 +154,6 @@ for current_image in selected_images:
     for line in sweep_result:
         depth_map, confidence_map = find_depth(line, depth_map, confidence_map)
 
-
     combined_map = depth_map * confidence_map / 255
 
     blur_kernel = 1/273 * np.array([[1,  4,  7,  4, 1],
@@ -161,7 +161,7 @@ for current_image in selected_images:
                                     [7, 26, 41, 26, 7],
                                     [4, 16, 26, 16, 4],
                                     [1,  4,  7,  4, 1]])
-    blur_map = np.mean(depth_map * confidence_map * 255, axis=2)
+    blur_map = np.mean(depth_map, axis=2)
     for i in range(100):
         blur_map = convolve2d(blur_map, blur_kernel, mode='same')
 

@@ -8,16 +8,16 @@ import pandas as pd
 from scipy.signal import convolve2d
 import datetime
 
-from image_corr_funcs import correlate_line, sweep_around, find_depth
+from image_corr_funcs import correlate_line, sweep_around, find_depth, bound
 
 # SETTINGS
 plot_images = False
 save_images = True
 selected_images = 'all'  # 'all' or specific [###, ###, ..., ###] or range(start, stop, step)
-test_center_point = (120, 255)
-test_kernel_size = (4, 4)
+# test_center_point = (120, 255)
+test_kernel_size = (8, 8)
 sweep_resolution = 10
-line_resolution = 1
+line_resolution = 5
 
 # == Loading dataset ==
 file_names = []
@@ -39,10 +39,13 @@ with open("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190
 if save_images:
     current_render_folder = f"../data/renders/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
     mkdir(f"{current_render_folder}")
-    for image_out in ["original", "mixed", "squares", "depth", "confidence", "combined", "blur"]:
+    for image_out in ["original", "mixed", "squares", "depth", "confidence", "blur", "memory"]:
         mkdir(f"{current_render_folder}/{image_out}")
 else:
     current_render_folder = None
+
+
+memory_map = np.zeros_like(images[0]['img'])
 
 
 if selected_images == 'all':
@@ -51,13 +54,22 @@ for current_image in selected_images:
     print(f"\033[1m=== Current Image: {current_image} ===\033[0m")
     current_image_name = images[current_image]['name'].removesuffix('.jpg') + '.png'
 
+    if save_images:
+        plt.imsave(f"{current_render_folder}/original/{current_image_name}", images[current_image]['img'].astype(np.uint8))
+
+
     # == Find corresponding data line ==
     time_index = dataframe['time'].sub(images[current_image]['time']).abs().idxmin()
 
     # (phi/roll, theta/pitch, psi/heading)
     attitude = (dataframe.iloc[time_index]['att_phi'],
-                dataframe.iloc[time_index]['att_theta'],
+                -dataframe.iloc[time_index]['att_theta'],
                 dataframe.iloc[time_index]['att_psi'])
+
+    print(f"\n=== ATTITUDE ===\n"
+          f"\tphi   | roll:    {attitude[0] / np.pi * 180: 3.2f} [deg]\n"
+          f"\ttheta | pitch:   {attitude[1] / np.pi * 180: 3.2f} [deg]\n"
+          f"\tpsi   | heading: {attitude[2] / np.pi * 180: 3.2f} [deg]")
 
     # (x_world, y_world, z_world)
     vel_world = (dataframe.iloc[time_index]['vel_x'],
@@ -65,9 +77,9 @@ for current_image in selected_images:
                  dataframe.iloc[time_index]['vel_z'])
 
     R_phi = np.array([
-        [np.cos(attitude[0]), -np.sin(attitude[0]), 0],
-        [np.sin(attitude[0]),  np.cos(attitude[0]), 0],
-        [                  0,                    0, 1]])
+        [1,                   0,                    0],
+        [0, np.cos(attitude[0]), -np.sin(attitude[0])],
+        [0, np.sin(attitude[0]),  np.cos(attitude[0])]])
 
     R_theta = np.array([
         [ np.cos(attitude[1]), 0, np.sin(attitude[1])],
@@ -76,9 +88,10 @@ for current_image in selected_images:
 
 
     R_psi = np.array([
-        [1,                   0,                    0],
-        [0, np.cos(attitude[2]), -np.sin(attitude[2])],
-        [0, np.sin(attitude[2]),  np.cos(attitude[2])]])
+        [np.cos(attitude[2]), -np.sin(attitude[2]), 0],
+        [np.sin(attitude[2]),  np.cos(attitude[2]), 0],
+        [                  0,                    0, 1]])
+
 
     rotation_world_to_body = R_psi @ R_theta @ R_phi
 
@@ -87,24 +100,30 @@ for current_image in selected_images:
     # TODO Find relation between body and camera frame
     vel_cam = vel_body
 
-    vel_screen = vel_body / vel_body[0]
-    print(f"\n=== VELOCITIES ===\n"
-          f"\tWorld Velocity:  {vel_world}\n"
-          f"\tBody velocity:   {vel_body}\n"
-          f"\tCamera velocity: {vel_body}\n"
-          f"\tScreen velocity: {vel_screen}")
+    vel_screen = vel_body / vel_body[1]
 
-    if plot_images:
+    print(f"\n=== VELOCITIES ===\n"
+          f"\tWorld Velocity:  [{vel_world[0]: 1.2f}, {vel_world[1]: 1.2f}, {vel_world[2]: 1.2f}] (x,y,z) [m/s]\n"
+          f"\tBody velocity:   [{vel_body[0]: 1.2f}, {vel_body[1]: 1.2f}, {vel_body[2]: 1.2f}] (x,y,z) [m/s]\n"
+          f"\tCamera velocity: [{vel_body[0]: 1.2f}, {vel_body[1]: 1.2f}, {vel_body[2]: 1.2f}] (x,y,z) [m/s]  <- TODO\n"
+          f"\tScreen velocity: [{vel_screen[0]: 1.2f}, {vel_screen[1]: 1.2f}, {vel_screen[2]: 1.2f}] (x,y,z) [K/x]")
+
+    center_point = (bound(int(120 * (1 - vel_screen[0])), 10, 230),
+                    bound(int(260 * (1 + vel_screen[2])), 10, 510))
+
+    if plot_images or save_images:
         fig = plt.figure(figsize=(8, 4), layout='constrained')
-        plt.title(str(images[10]['time']) + " + " + str(images[11]['time']))
         plt.imshow(images[current_image]['img'], alpha=0.5)
         plt.imshow(images[current_image + 1]['img'], alpha=0.5)
+        plt.plot(center_point[1], center_point[0], 'rx')
+
+    if plot_images:
+        plt.title(str(images[10]['time']) + " + " + str(images[11]['time']))
         plt.show()
 
     if save_images:
-        Image.fromarray(images[current_image]['img'], mode='RGB').save(f"{current_render_folder}/original/{current_image_name}")
-        plt.imsave(f"{current_render_folder}/mixed/{current_image_name}",
-                   (images[current_image]['img'] * 0.5 + images[current_image + 1]['img'] * 0.5).astype(np.uint8))
+        plt.axis('off')
+        plt.savefig(f"{current_render_folder}/mixed/{current_image_name}", bbox_inches='tight', pad_inches=0, dpi=68)
         plt.close()
 
     # == Test single line ==
@@ -128,7 +147,8 @@ for current_image in selected_images:
         plt.imshow(images[current_image]['img'], alpha=0.5)
         plt.imshow(images[current_image + 1]['img'], alpha=0.5)
 
-    sweep_result = sweep_around(test_center_point, images[current_image + 1]['img'], images[current_image]['img'],
+
+    sweep_result = sweep_around(center_point, images[current_image + 1]['img'], images[current_image]['img'],
                                 test_kernel_size, sweep_resolution=sweep_resolution, line_resolution=line_resolution,
                                 plot=plot_images or save_images)
 
@@ -138,6 +158,7 @@ for current_image in selected_images:
     if save_images:
         plt.axis('off')
         plt.savefig(f"{current_render_folder}/squares/{current_image_name}", bbox_inches='tight', pad_inches=0, dpi=68)
+        plt.close()
 
     # == Show sample lines ==
     # if plot_images:
@@ -164,6 +185,11 @@ for current_image in selected_images:
     blur_map = np.mean(depth_map, axis=2)
     for i in range(100):
         blur_map = convolve2d(blur_map, blur_kernel, mode='same')
+    blur_map = np.expand_dims(blur_map, axis=2)
+    blur_map = np.repeat(blur_map, 3, axis=2)
+
+    memory_map -= (memory_map * 0.5).astype(np.uint8)
+    memory_map += depth_map
 
     if plot_images:
         fig = plt.figure(figsize=(8, 4), layout='constrained')
@@ -186,11 +212,17 @@ for current_image in selected_images:
         plt.imshow(blur_map)
         plt.show()
 
+        fig = plt.figure(figsize=(8, 4), layout='constrained')
+        plt.title(f"Memory Map")
+        plt.imshow(memory_map)
+        plt.show()
+
     if save_images:
         plt.imsave(f"{current_render_folder}/depth/{current_image_name}", depth_map.astype(np.uint8))
         plt.imsave(f"{current_render_folder}/confidence/{current_image_name}", confidence_map.astype(np.uint8))
-        plt.imsave(f"{current_render_folder}/combined/{current_image_name}", combined_map.astype(np.float64))
+        # plt.imsave(f"{current_render_folder}/combined/{current_image_name}", combined_map.astype(np.float64))
         plt.imsave(f"{current_render_folder}/blur/{current_image_name}", blur_map.astype(np.float64) / 255)
+        plt.imsave(f"{current_render_folder}/memory/{current_image_name}", memory_map.astype(np.float64) / 255)
 
 
 # Correlation EXAMPLE OLD

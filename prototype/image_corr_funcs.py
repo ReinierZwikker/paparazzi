@@ -111,7 +111,6 @@ def sweep_around(center_point, image, kernel_source, kernel_size=(10, 10),
     end_points = []
     for angle in range(0, 360, sweep_resolution):
         angle_rad = angle / 180 * np.pi
-        print(angle, angle_rad)
         end_points.append([int(120+110*np.cos(angle_rad)),
                            int(260+250*np.sin(angle_rad))])
     results = []

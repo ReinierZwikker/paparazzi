@@ -6,13 +6,13 @@ from PyQt5.QtGui import QPixmap, QTransform
 from PyQt5.QtWidgets import QMainWindow, QApplication, QLabel, QPushButton, QFileDialog
 
 
-with open("..\\data\\mavlab_tests\\20240301-095957.csv") as csv_file:
+with open("../data/datasets/own_data/20240301-095957.csv") as csv_file:
     dataframe = pd.read_csv(csv_file)
 
 
 class MainWindow(QMainWindow):
 
-    def __init__(self, base_path: str = "../data/mavlab_tests/01_03_2024"):
+    def __init__(self, base_path: str = "../data/mavlab_tests/20240301-095957"):
         self.base_path: str = base_path
         self.image_paths: list = self.load_directory()
         self.current_image_id: int = 0
@@ -78,7 +78,7 @@ class MainWindow(QMainWindow):
 
     def open_file_dialog(self):
         dialog = QFileDialog(self)
-        dialog.setDirectory(f'C:/Master/Operation Optimization/paparazzi/data/mavlab_tests/01_03_2024')
+        dialog.setDirectory(f'C:/Master/Operation Optimization/paparazzi/data/mavlab_tests/20240301-095957')
         dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)
         dialog.setNameFilter("Images (*.png *.jpg)")
         dialog.setViewMode(QFileDialog.ViewMode.List)

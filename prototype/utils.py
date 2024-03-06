@@ -9,14 +9,18 @@ class Camera:
         self._dataset: str = dataset
         self._date: str = date
 
+        self._rotation: float = 0
+
         self._images_in_directory: list[str] = self.load_current_directory()
         self._selected_image: int = 0
+        self._image_path: str = os.path.join(self._base_path, self._dataset, self._date, self._images_in_directory[self._selected_image])
 
         self._current_image: Image = self.load_selected_image()
         self._current_image_array: np.array = self.convert_image_to_array()  # [rows, columns, rgb]
         self._current_time: int = int(self._images_in_directory[self._selected_image].removesuffix('.jpg'))  # microseconds
 
     def update_image(self):
+        self._image_path: str = os.path.join(self._base_path, self._dataset, self._date, self._images_in_directory[self._selected_image])
         self._current_image: Image = self.load_selected_image()
         self._current_image_array: np.array = self.convert_image_to_array()  # [rows, columns, rgb]
         self._current_time: int = int(self._images_in_directory[self._selected_image].removesuffix('.jpg'))  # microseconds
@@ -25,7 +29,8 @@ class Camera:
         return os.listdir(os.path.join(self._base_path, self._dataset, self._date))
 
     def load_selected_image(self):
-        return Image.open(os.path.join(self._base_path, self._dataset, self._date, self._images_in_directory[self._selected_image]))
+        image = Image.open(self._image_path)
+        return image.rotate(self._rotation, Image.NEAREST, expand=True)
 
     def convert_image_to_array(self):
         return np.array(self._current_image)
@@ -42,6 +47,10 @@ class Camera:
         self._selected_image = self._images_in_directory.index(image_name)
         self.update_image()
 
+    def rotate(self, degrees: float):
+        self._rotation = degrees
+        self.update_image()
+
     @property
     def image(self):
         return self._current_image
@@ -53,6 +62,10 @@ class Camera:
     @property
     def time(self):
         return self._current_time
+
+    @property
+    def image_path(self):
+        return self._image_path
 
     def __str__(self):
         image_path = self._images_in_directory[self._selected_image]

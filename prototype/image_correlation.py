@@ -11,16 +11,17 @@ import datetime
 
 from random import randint
 
-from image_corr_funcs import correlate_line, sweep_around, find_depth, bound
+from image_corr_funcs import correlate_line, sweep_around, sweep_horizontal, find_depth, convert_depth_to_td_map, bound
 
 # SETTINGS
 plot_images = False
 save_images = True
-selected_images = 'all'  # 'all' or specific [###, ###, ..., ###] or range(start, stop, step)
+selected_images = range(105,140)  # 'all' or specific [###, ###, ..., ###] or range(start, stop, step)
 # test_center_point = (120, 255)
-test_kernel_size = (8, 8)
-sweep_resolution = 10
-line_resolution = 20
+test_kernel_size = (10, 10)
+sweep_resolution = 15
+line_resolution = 3
+search_distance = 20
 memory_loss = 0.1
 
 # == Loading dataset ==
@@ -43,7 +44,7 @@ with open("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190
 if save_images:
     current_render_folder = f"../data/renders/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
     mkdir(f"{current_render_folder}")
-    for image_out in ["original", "mixed", "squares", "depth", "confidence", "blur", "memory"]:
+    for image_out in ["original", "mixed", "squares", "depth", "confidence", "hor", "memory", "td_radial", "td_hor"]:
         mkdir(f"{current_render_folder}/{image_out}")
 else:
     current_render_folder = None
@@ -112,10 +113,10 @@ for current_image in selected_images:
           f"\tCamera velocity: [{vel_body[0]: 1.2f}, {vel_body[1]: 1.2f}, {vel_body[2]: 1.2f}] (x,y,z) [m/s]  <- TODO\n"
           f"\tScreen velocity: [{vel_screen[0]: 1.2f}, {vel_screen[1]: 1.2f}, {vel_screen[2]: 1.2f}] (x,y,z) [K/x]")
 
-    # center_point = (bound(int(120 * (1 - vel_screen[0])), 10, 230),
-    #                 bound(int(260 * (1 + vel_screen[2])), 10, 510))
-    center_point = (randint(10, 230),
-                    randint(10, 510))
+    center_point = (bound(int(120 * (1 - vel_screen[0])), 10, 230),
+                    bound(int(260 * (1 + vel_screen[2])), 10, 510))
+    # center_point = (randint(10, 230),
+    #                 randint(10, 510))
 
     if plot_images or save_images:
         fig = plt.figure(figsize=(8, 4), layout='constrained')
@@ -147,16 +148,46 @@ for current_image in selected_images:
     # plt.imshow(line_result[0])
     # plt.show()
 
+    # blur_kernel = 1/273 * np.array([[1,  4,  7,  4, 1],
+    #                                 [4, 16, 26, 16, 4],
+    #                                 [7, 26, 41, 26, 7],
+    #                                 [4, 16, 26, 16, 4],
+    #                                 [1,  4,  7,  4, 1]])
+    edge_kernel = np.array([[-1, 0, 1],
+                            [-2, 0, 2],
+                            [-1, 0, 1]])
+
+    edge_map = np.mean(images[current_image + 1]['img'].astype(np.uint8), axis=2)
+    # for i in range(4):
+    edge_map = convolve2d(edge_map, edge_kernel, mode='same')
+    edge_map = np.absolute(edge_map)
+    edge_map = np.expand_dims(edge_map, axis=2)
+    edge_map = np.repeat(edge_map, 3, axis=2)
+
+    prev_edge_map = np.mean(images[current_image]['img'].astype(np.uint8), axis=2)
+    # for i in range(4):
+    prev_edge_map = convolve2d(prev_edge_map, edge_kernel, mode='same')
+    prev_edge_map = np.absolute(prev_edge_map)
+    prev_edge_map = np.expand_dims(prev_edge_map, axis=2)
+    prev_edge_map = np.repeat(prev_edge_map, 3, axis=2)
+
     # == Sweep line around image ==
     if plot_images or save_images:
         fig = plt.figure(figsize=(8, 4), layout='constrained')
-        plt.imshow(images[current_image]['img'], alpha=0.5)
-        plt.imshow(images[current_image + 1]['img'], alpha=0.5)
+        # plt.imshow(images[current_image]['img'], alpha=0.5)
+        # plt.imshow(images[current_image + 1]['img'], alpha=0.5)
+        plt.imshow(edge_map, alpha=0.5)
+        plt.imshow(prev_edge_map, alpha=0.5)
 
-
-    sweep_result = sweep_around(center_point, images[current_image + 1]['img'], images[current_image]['img'],
-                                test_kernel_size, sweep_resolution=sweep_resolution, line_resolution=line_resolution,
+    sweep_result = sweep_around(center_point, edge_map, prev_edge_map,                                                  # images[current_image + 1]['img'], images[current_image]['img'],
+                                test_kernel_size, sweep_resolution=sweep_resolution,
+                                line_resolution=line_resolution, search_distance=search_distance,
                                 plot=plot_images or save_images)
+
+    hor_line_result = sweep_horizontal(edge_map, prev_edge_map,
+                                       inter_line_distance=sweep_resolution,
+                                       line_resolution=line_resolution, search_distance=search_distance,
+                                       kernel_size=test_kernel_size, plot=plot_images or save_images)
 
     if plot_images:
         plt.title(str(images[10]['time']) + " + " + str(images[11]['time']))
@@ -167,40 +198,36 @@ for current_image in selected_images:
         plt.close()
 
     # == Show sample lines ==
-    # if plot_images:
-    #     for line in [0, 10, 20, 30, 40, 50, 60]:
-    #         fig = plt.figure(figsize=(6, 6), layout='constrained')
-    #         plt.title(f"Line Correlation result of Line {line}")
-    #         plt.imshow(sweep_result[line][0])
-    #         plt.show()
+    if plot_images:
+        for line in [0, 5, 10, 15]:
+            fig = plt.figure(figsize=(6, 6), layout='constrained')
+            plt.title(f"Line Correlation result of Line {line}")
+            plt.imshow(sweep_result[line][0])
+            plt.show()
 
     # == Find depth map ==
     depth_map = np.zeros_like(images[current_image]['img'])
+    hor_depth_map = np.zeros_like(images[current_image]['img'])
     confidence_map = np.zeros_like(images[current_image]['img'])
+    hor_confidence_map = np.zeros_like(images[current_image]['img'])
 
     for line in sweep_result:
         depth_map, confidence_map = find_depth(line, depth_map, confidence_map)
 
-    combined_map = depth_map * confidence_map / 255
+    for line in hor_line_result:
+        hor_depth_map, hor_confidence_map = find_depth(line, hor_depth_map, hor_confidence_map)
 
-    # blur_kernel = 1/273 * np.array([[1,  4,  7,  4, 1],
-    #                                 [4, 16, 26, 16, 4],
-    #                                 [7, 26, 41, 26, 7],
-    #                                 [4, 16, 26, 16, 4],
-    #                                 [1,  4,  7,  4, 1]])
-    # blur_kernel = np.array([[-1, 0, 1],
-    #                         [-2, 0, 2],
-    #                         [-1, 0, 1]])
-    #
-    # blur_map = np.mean(images[current_image]['img'].astype(np.uint8), axis=2)
-    # # for i in range(4):
-    # blur_map = convolve2d(blur_map, blur_kernel, mode='same')
-    # blur_map = np.absolute(blur_map)
-    # blur_map = np.expand_dims(blur_map, axis=2)
-    # blur_map = np.repeat(blur_map, 3, axis=2)
+    combined_map = (depth_map * confidence_map / 255).astype(np.uint8)
+    hor_combined_map = (hor_depth_map * hor_confidence_map / 255).astype(np.uint8)
+
+
 
     memory_map -= (memory_map * memory_loss).astype(np.uint8)
-    memory_map += confidence_map
+    memory_map += depth_map
+    memory_map += hor_depth_map
+
+    td_map = convert_depth_to_td_map(depth_map)
+    hor_td_map = convert_depth_to_td_map(hor_depth_map)
 
     if plot_images:
         fig = plt.figure(figsize=(8, 4), layout='constrained')
@@ -211,6 +238,16 @@ for current_image in selected_images:
         fig = plt.figure(figsize=(8, 4), layout='constrained')
         plt.title(f"Confidence Map")
         plt.imshow(confidence_map)
+        plt.show()
+
+        fig = plt.figure(figsize=(8, 4), layout='constrained')
+        plt.title(f"Horizontal Line Depth Map")
+        plt.imshow(hor_depth_map)
+        plt.show()
+
+        fig = plt.figure(figsize=(8, 4), layout='constrained')
+        plt.title(f"Horizontal Line Confidence Map")
+        plt.imshow(hor_confidence_map)
         plt.show()
 
         fig = plt.figure(figsize=(8, 4), layout='constrained')
@@ -228,12 +265,24 @@ for current_image in selected_images:
         plt.imshow(memory_map)
         plt.show()
 
+        fig = plt.figure(figsize=(8, 4), layout='constrained')
+        plt.title(f"Top-Down Map")
+        plt.imshow(td_map)
+        plt.show()
+
+        fig = plt.figure(figsize=(8, 4), layout='constrained')
+        plt.title(f"Top-Down (Hor) Map")
+        plt.imshow(hor_td_map)
+        plt.show()
+
     if save_images:
         plt.imsave(f"{current_render_folder}/depth/{current_image_name}", depth_map.astype(np.uint8))
         plt.imsave(f"{current_render_folder}/confidence/{current_image_name}", confidence_map.astype(np.uint8))
         # plt.imsave(f"{current_render_folder}/combined/{current_image_name}", combined_map.astype(np.float64))
-        # plt.imsave(f"{current_render_folder}/blur/{current_image_name}", blur_map.astype(np.float64) / 1000)
+        plt.imsave(f"{current_render_folder}/hor/{current_image_name}", hor_depth_map.astype(np.uint8))
         plt.imsave(f"{current_render_folder}/memory/{current_image_name}", memory_map.astype(np.float64) / 256)
+        plt.imsave(f"{current_render_folder}/td_radial/{current_image_name}", td_map.astype(np.uint8))
+        plt.imsave(f"{current_render_folder}/td_hor/{current_image_name}", hor_td_map.astype(np.uint8))
 
 
 # Correlation EXAMPLE OLD

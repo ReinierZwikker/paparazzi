@@ -133,6 +133,6 @@ def find_depth(radial_sweep_result, depth_map, confidence_map):
     """
     for i in range(radial_sweep_result[0].shape[0]):
         max_index = np.argmax(radial_sweep_result[0][i, :])
-        depth_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = int(255 * abs(i - max_index) / radial_sweep_result[0].shape[0])
-        confidence_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = 2550 * (1 - np.sum(radial_sweep_result[0][i, :]) / radial_sweep_result[0].shape[0])
+        depth_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = int(2550 * abs(i - max_index) / radial_sweep_result[0].shape[0])
+        confidence_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = 2550 * (radial_sweep_result[0][i, max_index] - np.mean(radial_sweep_result[0][i, :]))
     return depth_map, confidence_map

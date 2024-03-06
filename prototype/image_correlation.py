@@ -14,14 +14,14 @@ from random import randint
 from image_corr_funcs import correlate_line, sweep_around, find_depth, bound
 
 # SETTINGS
-plot_images = False
-save_images = True
-selected_images = 'all'  # 'all' or specific [###, ###, ..., ###] or range(start, stop, step)
+plot_images = True
+save_images = False
+selected_images = [240,241]  # 'all' or specific [###, ###, ..., ###] or range(start, stop, step)
 # test_center_point = (120, 255)
 test_kernel_size = (8, 8)
 sweep_resolution = 10
-line_resolution = 20
-memory_loss = 0.1
+line_resolution = 5
+memory_loss = 0.5
 
 # == Loading dataset ==
 file_names = []
@@ -43,7 +43,7 @@ with open("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190
 if save_images:
     current_render_folder = f"../data/renders/{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
     mkdir(f"{current_render_folder}")
-    for image_out in ["original", "mixed", "squares", "depth", "confidence", "blur", "memory"]:
+    for image_out in ["original", "mixed", "squares", "depth", "combined", "confidence", "blur", "memory"]:
         mkdir(f"{current_render_folder}/{image_out}")
 else:
     current_render_folder = None
@@ -112,10 +112,10 @@ for current_image in selected_images:
           f"\tCamera velocity: [{vel_body[0]: 1.2f}, {vel_body[1]: 1.2f}, {vel_body[2]: 1.2f}] (x,y,z) [m/s]  <- TODO\n"
           f"\tScreen velocity: [{vel_screen[0]: 1.2f}, {vel_screen[1]: 1.2f}, {vel_screen[2]: 1.2f}] (x,y,z) [K/x]")
 
-    # center_point = (bound(int(120 * (1 - vel_screen[0])), 10, 230),
-    #                 bound(int(260 * (1 + vel_screen[2])), 10, 510))
-    center_point = (randint(10, 230),
-                    randint(10, 510))
+    center_point = (bound(int(120 * (1 - vel_screen[0])), 10, 230),
+                    bound(int(260 * (1 + vel_screen[2])), 10, 510))
+    # center_point = (randint(10, 230),
+    #                 randint(10, 510))
 
     if plot_images or save_images:
         fig = plt.figure(figsize=(8, 4), layout='constrained')
@@ -181,7 +181,10 @@ for current_image in selected_images:
     for line in sweep_result:
         depth_map, confidence_map = find_depth(line, depth_map, confidence_map)
 
-    combined_map = depth_map * confidence_map / 255
+    confidence_map[confidence_map < 128] = 0
+    confidence_map[confidence_map > 128] = 1
+
+    combined_map = depth_map * confidence_map
 
     # blur_kernel = 1/273 * np.array([[1,  4,  7,  4, 1],
     #                                 [4, 16, 26, 16, 4],
@@ -231,7 +234,7 @@ for current_image in selected_images:
     if save_images:
         plt.imsave(f"{current_render_folder}/depth/{current_image_name}", depth_map.astype(np.uint8))
         plt.imsave(f"{current_render_folder}/confidence/{current_image_name}", confidence_map.astype(np.uint8))
-        # plt.imsave(f"{current_render_folder}/combined/{current_image_name}", combined_map.astype(np.float64))
+        plt.imsave(f"{current_render_folder}/combined/{current_image_name}", combined_map.astype(np.float64))
         # plt.imsave(f"{current_render_folder}/blur/{current_image_name}", blur_map.astype(np.float64) / 1000)
         plt.imsave(f"{current_render_folder}/memory/{current_image_name}", memory_map.astype(np.float64) / 256)
 

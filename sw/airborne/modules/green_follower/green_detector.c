@@ -33,6 +33,8 @@ static struct image_t *green_heading_finder(struct image_t *img)
     uint8_t cr_min, cr_max;
     bool draw;
 
+    float best_heading, safe_length;
+
     lum_min = 0;
     lum_max = 255;
     cb_min = 0;
@@ -41,12 +43,12 @@ static struct image_t *green_heading_finder(struct image_t *img)
     cr_max = 255;
     draw = true;
 
-    // Filter and find centroid
-    uint32_t best_heading = find_object_centroid(img, &x_c, &y_c, draw, lum_min, lum_max, cb_min, cb_max, cr_min, cr_max);
+    // TODO Implement heading finder here
 
+    // Filter and find centroid
     pthread_mutex_lock(&mutex);
-    global_heading_object.best_heading = 0;
-    global_heading_object.safe_length = 0;
+    global_heading_object.best_heading = best_heading;
+    global_heading_object.safe_length = safe_length;
     global_heading_object.updated = true;
     pthread_mutex_unlock(&mutex);
 
@@ -54,10 +56,10 @@ static struct image_t *green_heading_finder(struct image_t *img)
 }
 
 void green_detector_init(void) {
-    memset(global_filters, 0, 2*sizeof(struct color_object_t));
+    memset(global_heading_object, 0, sizeof(struct heading_object_t));
     pthread_mutex_init(&mutex, NULL);
 
-    cv_add_to_device(&COLOR_OBJECT_DETECTOR_CAMERA1, green_heading_finder, 0, 0);
+    cv_add_to_device(?, green_heading_finder, 0, 0);
 
 }
 

@@ -1,4 +1,5 @@
 import os
+import random
 
 from PIL import Image
 import numpy as np
@@ -7,6 +8,8 @@ from os import walk, mkdir
 import pandas as pd
 from scipy.signal import convolve2d
 import datetime
+
+from random import randint
 
 from image_corr_funcs import correlate_line, sweep_around, find_depth, bound
 
@@ -17,7 +20,8 @@ selected_images = 'all'  # 'all' or specific [###, ###, ..., ###] or range(start
 # test_center_point = (120, 255)
 test_kernel_size = (8, 8)
 sweep_resolution = 10
-line_resolution = 5
+line_resolution = 20
+memory_loss = 0.1
 
 # == Loading dataset ==
 file_names = []
@@ -108,8 +112,10 @@ for current_image in selected_images:
           f"\tCamera velocity: [{vel_body[0]: 1.2f}, {vel_body[1]: 1.2f}, {vel_body[2]: 1.2f}] (x,y,z) [m/s]  <- TODO\n"
           f"\tScreen velocity: [{vel_screen[0]: 1.2f}, {vel_screen[1]: 1.2f}, {vel_screen[2]: 1.2f}] (x,y,z) [K/x]")
 
-    center_point = (bound(int(120 * (1 - vel_screen[0])), 10, 230),
-                    bound(int(260 * (1 + vel_screen[2])), 10, 510))
+    # center_point = (bound(int(120 * (1 - vel_screen[0])), 10, 230),
+    #                 bound(int(260 * (1 + vel_screen[2])), 10, 510))
+    center_point = (randint(10, 230),
+                    randint(10, 510))
 
     if plot_images or save_images:
         fig = plt.figure(figsize=(8, 4), layout='constrained')
@@ -177,19 +183,24 @@ for current_image in selected_images:
 
     combined_map = depth_map * confidence_map / 255
 
-    blur_kernel = 1/273 * np.array([[1,  4,  7,  4, 1],
-                                    [4, 16, 26, 16, 4],
-                                    [7, 26, 41, 26, 7],
-                                    [4, 16, 26, 16, 4],
-                                    [1,  4,  7,  4, 1]])
-    blur_map = np.mean(depth_map, axis=2)
-    for i in range(100):
-        blur_map = convolve2d(blur_map, blur_kernel, mode='same')
-    blur_map = np.expand_dims(blur_map, axis=2)
-    blur_map = np.repeat(blur_map, 3, axis=2)
+    # blur_kernel = 1/273 * np.array([[1,  4,  7,  4, 1],
+    #                                 [4, 16, 26, 16, 4],
+    #                                 [7, 26, 41, 26, 7],
+    #                                 [4, 16, 26, 16, 4],
+    #                                 [1,  4,  7,  4, 1]])
+    # blur_kernel = np.array([[-1, 0, 1],
+    #                         [-2, 0, 2],
+    #                         [-1, 0, 1]])
+    #
+    # blur_map = np.mean(images[current_image]['img'].astype(np.uint8), axis=2)
+    # # for i in range(4):
+    # blur_map = convolve2d(blur_map, blur_kernel, mode='same')
+    # blur_map = np.absolute(blur_map)
+    # blur_map = np.expand_dims(blur_map, axis=2)
+    # blur_map = np.repeat(blur_map, 3, axis=2)
 
-    memory_map -= (memory_map * 0.5).astype(np.uint8)
-    memory_map += depth_map
+    memory_map -= (memory_map * memory_loss).astype(np.uint8)
+    memory_map += confidence_map
 
     if plot_images:
         fig = plt.figure(figsize=(8, 4), layout='constrained')
@@ -207,10 +218,10 @@ for current_image in selected_images:
         plt.imshow(combined_map)
         plt.show()
 
-        fig = plt.figure(figsize=(8, 4), layout='constrained')
-        plt.title(f"Blurred Map")
-        plt.imshow(blur_map)
-        plt.show()
+        # fig = plt.figure(figsize=(8, 4), layout='constrained')
+        # plt.title(f"Blurred Map")
+        # plt.imshow(blur_map)
+        # plt.show()
 
         fig = plt.figure(figsize=(8, 4), layout='constrained')
         plt.title(f"Memory Map")
@@ -221,8 +232,8 @@ for current_image in selected_images:
         plt.imsave(f"{current_render_folder}/depth/{current_image_name}", depth_map.astype(np.uint8))
         plt.imsave(f"{current_render_folder}/confidence/{current_image_name}", confidence_map.astype(np.uint8))
         # plt.imsave(f"{current_render_folder}/combined/{current_image_name}", combined_map.astype(np.float64))
-        plt.imsave(f"{current_render_folder}/blur/{current_image_name}", blur_map.astype(np.float64) / 255)
-        plt.imsave(f"{current_render_folder}/memory/{current_image_name}", memory_map.astype(np.float64) / 255)
+        # plt.imsave(f"{current_render_folder}/blur/{current_image_name}", blur_map.astype(np.float64) / 1000)
+        plt.imsave(f"{current_render_folder}/memory/{current_image_name}", memory_map.astype(np.float64) / 256)
 
 
 # Correlation EXAMPLE OLD

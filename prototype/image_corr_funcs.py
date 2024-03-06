@@ -44,16 +44,16 @@ def correlate_line(image, kernel_source, kernel_size,
                          :]
         kernel = kernel / np.linalg.norm(kernel)
         for j in range(amount_of_line_points):
-            if abs(i - j) < 10:
-                image_slice = image[
-                              int(x_positions[j] - kernel_extend[0]):int(x_positions[j] + kernel_extend[0]),
-                              int(y_positions[j] - kernel_extend[1]):int(y_positions[j] + kernel_extend[1]),
-                              :]
-                image_slice = image_slice / np.linalg.norm(image_slice)
-                results[i, j] = np.sum(np.multiply(image_slice,
-                                                   kernel))
-                # results[i, i-j]
-                # print(f"({x_positions[i]}, {y_positions[i]}): {results[i, j]}")
+            # if abs(i - j) < 10:
+            image_slice = image[
+                          int(x_positions[j] - kernel_extend[0]):int(x_positions[j] + kernel_extend[0]),
+                          int(y_positions[j] - kernel_extend[1]):int(y_positions[j] + kernel_extend[1]),
+                          :]
+            image_slice = image_slice / np.linalg.norm(image_slice)
+            results[i, j] = np.sum(np.multiply(image_slice,
+                                               kernel))
+            # results[i, i-j]
+            # print(f"({x_positions[i]}, {y_positions[i]}): {results[i, j]}")
     if plot:
         plt.plot(y_positions, x_positions, 'rs', linestyle='none', markerfacecolor='none', markersize=kernel_size[0])
 
@@ -133,6 +133,6 @@ def find_depth(radial_sweep_result, depth_map, confidence_map):
     """
     for i in range(radial_sweep_result[0].shape[0]):
         max_index = np.argmax(radial_sweep_result[0][i, :])
-        depth_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = 255 * 1 / (max(abs(i - max_index), 1))
+        depth_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = int(255 * abs(i - max_index) / radial_sweep_result[0].shape[0])
         confidence_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = 2550 * (1 - np.sum(radial_sweep_result[0][i, :]) / radial_sweep_result[0].shape[0])
     return depth_map, confidence_map

@@ -5,6 +5,15 @@ from PIL import Image
 
 class Camera:
     def __init__(self, dataset: str, date: str, base_path: str = "../data/datasets"):
+        """
+        Creates a way to easily browse through a dataset and convert it to the right datatypes.
+        Make sure you put the datasets within the data folder.
+
+        param dataset: The name of the folder within datasets which you want to view
+        param date: The name of the folder within the dataset which you want to view
+
+        Attributes are made private to prevent conversion mismatches, access them through @property defined below
+        """
         self._base_path: str = base_path
         self._dataset: str = dataset
         self._date: str = date
@@ -17,6 +26,7 @@ class Camera:
 
         self._current_image: Image = self.load_selected_image()
         self._current_image_array: np.array = self.convert_image_to_array()  # [rows, columns, rgb]
+        self._current_image_yuv: np.array = self.convert_image_to_yuv()  # [rows, columns, yuv]
         self._current_time: int = int(self._images_in_directory[self._selected_image].removesuffix('.jpg'))  # microseconds
 
     def update_image(self):
@@ -34,6 +44,15 @@ class Camera:
 
     def convert_image_to_array(self):
         return np.array(self._current_image)
+
+    def convert_image_to_yuv(self):
+        m = np.array([[0.29900, -0.16874, 0.50000],
+                      [0.58700, -0.33126, -0.41869],
+                      [0.11400, 0.50000, -0.08131]])
+
+        yuv = np.dot(self._current_image_array, m)
+        yuv[:, :, 1:] += 128.0
+        return yuv
 
     def next_frame(self):
         self._selected_image += 1
@@ -56,8 +75,12 @@ class Camera:
         return self._current_image
 
     @property
-    def image_array(self):
+    def image_rgb(self):
         return self._current_image_array
+
+    @property
+    def image_yuv(self):
+        return self._current_image_yuv
 
     @property
     def time(self):

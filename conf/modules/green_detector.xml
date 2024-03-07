@@ -5,6 +5,12 @@
     <description>ColorFilter</description>
     <define name="GREENFILTER_CAMERA" value="front_camera" description="Video device to use"/>
     <define name="GREENFILTER_FPS" value="0" description="The (maximum) frequency to run the calculations at. If zero, it will max out at the camera frame rate"/>
+    <define name="GREEN_DETECTOR_LUM_MIN1" value="0" description="Filter 1 min luminance"/>
+    <define name="GREEN_DETECTOR_LUM_MAX1" value="0" description="Filter 1 max luminance"/>
+    <define name="GREEN_DETECTOR_CB_MIN1" value="0" description="Filter 1 min blue chroma"/>
+    <define name="GREEN_DETECTOR_CB_MAX1" value="0" description="Filter 1 max blue chroma"/>
+    <define name="GREEN_DETECTOR_CR_MIN1" value="0" description="Filter 1 min red chroma"/>
+    <define name="GREEN_DETECTOR_CR_MAX1" value="0" description="Filter 1 max red chroma"/>
   </doc>
 
   <settings>

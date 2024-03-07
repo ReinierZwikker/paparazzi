@@ -145,4 +145,3 @@ void get_direction(struct image_t *img, uint8_t resolution, float* best_heading,
         }
     }
 }
-

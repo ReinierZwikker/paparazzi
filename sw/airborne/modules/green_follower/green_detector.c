@@ -79,14 +79,14 @@ void green_detector_init(void) {
 }
 
 void green_detector_periodic(void) {
-    static struct heading_object_t local_filter;
+    static struct heading_object_t local_heading_object;
     pthread_mutex_lock(&mutex);
-    memcpy(local_filter, global_heading_object, sizeof(struct heading_object_t));
+    memcpy(local_heading_object, global_heading_object, sizeof(struct heading_object_t));
     pthread_mutex_unlock(&mutex);
 
-    if(local_filter.updated){
-        AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_filter.best_heading, local_filter.safe_length);
-        local_filters.updated = false;
+    if(local_heading_object.updated){
+        AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_heading_object.best_heading, local_heading_object.safe_length);
+        local_heading_object.updated = false;
     }
 }
 
@@ -155,4 +155,6 @@ void get_direction(struct image_t *img, uint8_t resolution, float* best_heading,
             *safe_length = radial;
         }
     }
+
+    *best_heading = M_PI/2 - *best_heading
 }

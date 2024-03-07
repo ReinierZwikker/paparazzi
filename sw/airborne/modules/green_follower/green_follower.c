@@ -80,10 +80,10 @@ void green_follower_periodic(void)
         return;
     }
 
-    float speed_sp = fminf(gf_max_speed, 0); // TODO Set to floor length of longest heading
+    float speed_sp = fminf(gf_max_speed, current_safe_length / 100);
 
     guidance_h_set_body_vel(speed_sp, 0);
-    guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi);
+    guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + current_best_heading);
 
     return;
 }

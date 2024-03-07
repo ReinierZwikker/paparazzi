@@ -204,3 +204,7 @@ tests/results/*
 
 # K-develop
 *.kate-swp
+
+# Dataset
+./data/datasets
+./tests/mavlab/01_03_2024

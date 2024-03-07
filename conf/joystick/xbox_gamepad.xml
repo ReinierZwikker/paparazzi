@@ -66,7 +66,7 @@ so e.g. HatDown(dpad)
 
     <message class="datalink" name="RC_4CH" send_always="true">
       <field name="mode" value="mode"/>
-      <field name="throttle" value="Fit(-throttle,-127,127,0,127)"/>
+      <field name="throttle" value="Fit(-throttle, -127, 127, 0, 127)"/>
       <field name="roll" value="roll"/>
       <field name="pitch" value="pitch"/>
       <field name="yaw" value="yaw"/>

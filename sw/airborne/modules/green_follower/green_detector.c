@@ -83,12 +83,12 @@ void green_detector_init(void) {
     pthread_mutex_init(&mutex, NULL);
 
     #ifdef GREEN_DETECTOR_LUM_MIN
-        gd_lum_min1 = GREEN_DETECTOR_LUM_MIN;
-        gd_lum_max1 = GREEN_DETECTOR_LUM_MAX;
-        gd_cb_min1 = GREEN_DETECTOR_CB_MIN;
-        gd_cb_max1 = GREEN_DETECTOR_CB_MAX;
-        gd_cr_min1 = GREEN_DETECTOR_CR_MIN;
-        gd_cr_max1 = GREEN_DETECTOR_CR_MAX;
+        gd_lum_min = GREEN_DETECTOR_LUM_MIN;
+        gd_lum_max = GREEN_DETECTOR_LUM_MAX;
+        gd_cb_min = GREEN_DETECTOR_CB_MIN;
+        gd_cb_max = GREEN_DETECTOR_CB_MAX;
+        gd_cr_min = GREEN_DETECTOR_CR_MIN;
+        gd_cr_max = GREEN_DETECTOR_CR_MAX;
     #endif
 
     cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder, GREENFILTER_FPS, 0);

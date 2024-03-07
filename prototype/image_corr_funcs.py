@@ -7,8 +7,7 @@ def bound(value, lower, upper):
 
 
 def correlate_line(image, kernel_source, kernel_size,
-                   start_x, start_y, end_x, end_y,
-                   step=1, search_distance=20,
+                   start_x, start_y, end_x, end_y, step=1,
                    logarithmic_spacing=True, plot=False):
     """
 
@@ -151,9 +150,8 @@ def find_depth(radial_sweep_result, depth_map, confidence_map):
     """
     for i in range(radial_sweep_result[0].shape[0]):
         max_index = np.argmax(radial_sweep_result[0][i, :])
-        # print(f"{i} | {max_index} | {abs(i - max_index)} | {int(255 * abs(i - max_index) / radial_sweep_result[0].shape[0])}")
-        depth_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = int(255 * abs(i - max_index) / 20)
-        confidence_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = 2550 * (1 - np.sum(radial_sweep_result[0][i, :]) / 20)  # radial_sweep_result[0].shape[0]
+        depth_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = int(2550 * abs(i - max_index) / radial_sweep_result[0].shape[0])
+        confidence_map[radial_sweep_result[1][i], radial_sweep_result[2][i]] = 2550 * (radial_sweep_result[0][i, max_index] - np.mean(radial_sweep_result[0][i, :]))
     return depth_map, confidence_map
 
 def convert_depth_to_td_map(depth_map, factor=1):

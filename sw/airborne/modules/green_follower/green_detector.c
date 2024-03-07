@@ -28,12 +28,13 @@ static pthread_mutex_t mutex;
 struct heading_object_t {
     float best_heading;
     float safe_length;
+    uint8_t green_pixels;
     bool updated;
 };
 
 struct heading_object_t global_heading_object;
 
-void apply_threshold(struct image_t *img,
+void apply_threshold(struct image_t *img, uint8_t green_pixels,
                      uint8_t lum_min, uint8_t lum_max,
                      uint8_t cb_min, uint8_t cb_max,
                      uint8_t cr_min, uint8_t cr_max);
@@ -65,7 +66,7 @@ static struct image_t *green_heading_finder(struct image_t *img)
     uint8_t scan_resolution = 50;
 
     // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
-    apply_threshold(img, lum_min, lum_max, cb_min, cb_max, cr_min, cr_max);
+    apply_threshold(img, lum_min, lum_max, cb_min, cb_max, cr_min, cr_max, &global_heading_object.green_pixels);
     // Scan in radials from the centre bottom of the image to find the direction with the most green pixels
     get_direction(img, scan_resolution, &best_heading, &safe_length)
 
@@ -101,18 +102,19 @@ void green_detector_periodic(void) {
     pthread_mutex_unlock(&mutex);
 
     if(local_heading_object.updated){
-        AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_heading_object.best_heading, local_heading_object.safe_length);
+        AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_heading_object.best_heading, local_heading_object.safe_length, local_heading_object.green_pixels);
         local_heading_object.updated = false;
     }
 }
 
 
-void apply_threshold(struct image_t *img,
+void apply_threshold(struct image_t *img, uint8_t* green_pixels,
                      uint8_t lum_min, uint8_t lum_max,
                      uint8_t cb_min, uint8_t cb_max,
                      uint8_t cr_min, uint8_t cr_max)
 {
   uint8_t *buffer = img->buf;
+  *green_pixels = 0;
 
   // Go through all the pixels
   for (uint16_t y = 0; y < img->h; y++) {
@@ -135,7 +137,8 @@ void apply_threshold(struct image_t *img,
       if ( (*yp >= lum_min) && (*yp <= lum_max) &&
            (*up >= cb_min ) && (*up <= cb_max ) &&
            (*vp >= cr_min ) && (*vp <= cr_max )) {
-        *yp = 255;  // make pixel white
+            *green_pixels++
+            *yp = 255;  // make pixel white
         }
       else {
         *yp = 0; // make pixel black

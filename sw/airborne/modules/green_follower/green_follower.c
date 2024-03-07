@@ -94,6 +94,7 @@ void green_follower_periodic(void)
         guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + current_best_heading);
     }
     else {
+        guidance_h_set_body_vel(0, 0);
         guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + M_PI/2);
     }
 

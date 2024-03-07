@@ -10,6 +10,11 @@
 #include <math.h>
 #include "pthread.h"
 
+#ifndef GREENFILTER_FPS
+#define GREENFILTER_FPS 0       ///< Default FPS (zero means run at camera fps)
+#endif
+PRINT_CONFIG_VAR(COLORFILTER_FPS)
+
 static pthread_mutex_t mutex;
 
 struct heading_object_t {
@@ -32,7 +37,6 @@ void get_direction(struct image_t *img, uint8_t resolution);
 /*
  * object_detector
  * @param img - input image to process
- * @param filter - which detection filter to process
  * @return img
  */
 static struct image_t *green_heading_finder(struct image_t *img)
@@ -71,12 +75,19 @@ void green_detector_init(void) {
     memset(global_heading_object, 0, sizeof(struct heading_object_t));
     pthread_mutex_init(&mutex, NULL);
 
-    cv_add_to_device(?, green_heading_finder, 0, 0);
-
+    cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder, GREENFILTER_FPS, 0);
 }
 
 void green_detector_periodic(void) {
+    static struct heading_object_t local_filter;
+    pthread_mutex_lock(&mutex);
+    memcpy(local_filter, global_heading_object, sizeof(struct heading_object_t));
+    pthread_mutex_unlock(&mutex);
 
+    if(local_filter.updated){
+        AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_filter.best_heading, local_filter.safe_length);
+        local_filters.updated = false;
+    }
 }
 
 

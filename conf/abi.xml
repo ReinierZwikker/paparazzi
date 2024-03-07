@@ -248,6 +248,11 @@
       <field name="vel_sp" type="struct FloatVect3 *" unit="m/s"/>
     </message>
 
+    <message name="GREEN_DETECTION" id="37">
+      <field name="best_heading" type="float">Heading with the most green pixels</field>
+      <field name="safe_length"  type="float">Amount of green pixels in given direction</field>
+    </message>
+
   </msg_class>
 
 </protocol>

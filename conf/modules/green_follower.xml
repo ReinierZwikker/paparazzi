@@ -16,7 +16,7 @@ TODO
   </settings>
   
   <dep>
-    <depends></depends>
+    <depends>green_detector</depends>
   </dep>
   <header>
     <file name="green_follower.h"/>

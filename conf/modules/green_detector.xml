@@ -10,12 +10,12 @@
   <settings>
     <dl_settings>
       <dl_settings name="GreenDetector">
-        <dl_setting var="lum_min" min="0" step="1" max="255" shortname="y_min" />
-        <dl_setting var="lum_max" min="0" step="1" max="255" shortname="y_max" />
-        <dl_setting var="cb_min"  min="0" step="1" max="255" shortname="u_min" />
-        <dl_setting var="cb_max"  min="0" step="1" max="255" shortname="u_max" />
-        <dl_setting var="cr_min"  min="0" step="1" max="255" shortname="v_min" />
-        <dl_setting var="cr_max"  min="0" step="1" max="255" shortname="v_max" />
+        <dl_setting var="gd_lum_min" min="0" step="1" max="255" shortname="y_min" />
+        <dl_setting var="gd_lum_max" min="0" step="1" max="255" shortname="y_max" />
+        <dl_setting var="gd_cb_min"  min="0" step="1" max="255" shortname="u_min" />
+        <dl_setting var="gd_cb_max"  min="0" step="1" max="255" shortname="u_max" />
+        <dl_setting var="gd_cr_min"  min="0" step="1" max="255" shortname="v_min" />
+        <dl_setting var="gd_cr_max"  min="0" step="1" max="255" shortname="v_max" />
       </dl_settings>
     </dl_settings>
   </settings>

@@ -15,6 +15,14 @@
 #endif
 PRINT_CONFIG_VAR(COLORFILTER_FPS)
 
+// Filter Settings
+uint8_t gd_lum_min = 60;
+uint8_t gd_lum_max = 130;
+uint8_t gd_cb_min = 75;
+uint8_t gd_cb_max = 110;
+uint8_t gd_cr_min = 120;
+uint8_t gd_cr_max = 140;
+
 static pthread_mutex_t mutex;
 
 struct heading_object_t {
@@ -48,13 +56,12 @@ static struct image_t *green_heading_finder(struct image_t *img)
 
     float best_heading, safe_length;
 
-    lum_min = 60;
-    lum_max = 130;
-    cb_min = 75;
-    cb_max = 110;
-    cr_min = 120;
-    cr_max = 140;
-    draw = true;
+    lum_min = gd_lum_min;
+    lum_max = gd_lum_max;
+    cb_min = gd_cb_min;
+    cb_max = gd_cb_max;
+    cr_min = gd_cr_min;
+    cr_max = gd_cr_max;
     uint8_t scan_resolution = 50;
 
     // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0

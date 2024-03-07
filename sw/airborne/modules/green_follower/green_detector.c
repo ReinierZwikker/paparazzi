@@ -2,10 +2,12 @@
 // Created by lilly on 6-3-24.
 //
 
-#include "green_detector.h"
+#include "modules/green_follower/green_detector.h"
 #include "modules/computer_vision/cv.h"
 #include "modules/core/abi.h"
+#include "std.h"
 
+#include <stdio.h>
 #include <stdbool.h>
 #include <math.h>
 #include "pthread.h"
@@ -14,6 +16,15 @@
 #define GREENFILTER_FPS 0       ///< Default FPS (zero means run at camera fps)
 #endif
 PRINT_CONFIG_VAR(COLORFILTER_FPS)
+
+#define GREEN_DETECTOR_VERBOSE TRUE
+
+#define PRINT(string,...) fprintf(stderr, "[green_follower->%s()] " string,__FUNCTION__ , ##__VA_ARGS__)
+#if GREEN_DETECTOR_VERBOSE
+#define VERBOSE_PRINT PRINT
+#else
+#define VERBOSE_PRINT(...)
+#endif
 
 // Filter Settings
 uint8_t gd_lum_min = 60;
@@ -28,20 +39,19 @@ static pthread_mutex_t mutex;
 struct heading_object_t {
     float best_heading;
     float safe_length;
-    uint8_t green_pixels;
+    uint32_t green_pixels;
     bool updated;
 };
-
 struct heading_object_t global_heading_object;
 
-void apply_threshold(struct image_t *img, uint8_t green_pixels,
+void apply_threshold(struct image_t *img, uint32_t *green_pixels,
                      uint8_t lum_min, uint8_t lum_max,
                      uint8_t cb_min, uint8_t cb_max,
                      uint8_t cr_min, uint8_t cr_max);
 
 float get_radial(struct image_t *img, float angle, uint8_t radius);
 
-void get_direction(struct image_t *img, uint8_t resolution);
+void get_direction(struct image_t *img, uint8_t resolution, float* best_heading, float* safe_length);
 
 /*
  * object_detector
@@ -53,9 +63,10 @@ static struct image_t *green_heading_finder(struct image_t *img)
     uint8_t lum_min, lum_max;
     uint8_t cb_min, cb_max;
     uint8_t cr_min, cr_max;
-    bool draw;
 
     float best_heading, safe_length;
+
+    uint32_t green_pixels;
 
     lum_min = gd_lum_min;
     lum_max = gd_lum_max;
@@ -66,21 +77,27 @@ static struct image_t *green_heading_finder(struct image_t *img)
     uint8_t scan_resolution = 50;
 
     // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
-    apply_threshold(img, lum_min, lum_max, cb_min, cb_max, cr_min, cr_max, &global_heading_object.green_pixels);
+    apply_threshold(img, &green_pixels, lum_min, lum_max, cb_min, cb_max, cr_min, cr_max);
     // Scan in radials from the centre bottom of the image to find the direction with the most green pixels
-    get_direction(img, scan_resolution, &best_heading, &safe_length)
+    get_direction(img, scan_resolution, &best_heading, &safe_length);
 
-    // Filter and find centroid
     pthread_mutex_lock(&mutex);
     global_heading_object.best_heading = best_heading;
     global_heading_object.safe_length = safe_length;
+    global_heading_object.green_pixels = green_pixels;
     global_heading_object.updated = true;
     pthread_mutex_unlock(&mutex);
     return img;
 }
 
+struct image_t *green_heading_finder1(struct image_t *img, uint8_t camera_id);
+struct image_t *green_heading_finder1(struct image_t *img, uint8_t camera_id __attribute__((unused)))
+{
+    return green_heading_finder(img);
+}
+
 void green_detector_init(void) {
-    memset(global_heading_object, 0, sizeof(struct heading_object_t));
+    memset(&global_heading_object, 0, sizeof(struct heading_object_t));
     pthread_mutex_init(&mutex, NULL);
 
     #ifdef GREEN_DETECTOR_LUM_MIN
@@ -92,13 +109,13 @@ void green_detector_init(void) {
         gd_cr_max = GREEN_DETECTOR_CR_MAX;
     #endif
 
-    cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder, GREENFILTER_FPS, 0);
+    cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
 }
 
 void green_detector_periodic(void) {
     static struct heading_object_t local_heading_object;
     pthread_mutex_lock(&mutex);
-    memcpy(local_heading_object, global_heading_object, sizeof(struct heading_object_t));
+    memcpy(&local_heading_object, &global_heading_object, sizeof(struct heading_object_t));
     pthread_mutex_unlock(&mutex);
 
     if(local_heading_object.updated){
@@ -108,13 +125,13 @@ void green_detector_periodic(void) {
 }
 
 
-void apply_threshold(struct image_t *img, uint8_t* green_pixels,
+void apply_threshold(struct image_t *img, uint32_t* green_pixels,
                      uint8_t lum_min, uint8_t lum_max,
                      uint8_t cb_min, uint8_t cb_max,
                      uint8_t cr_min, uint8_t cr_max)
 {
   uint8_t *buffer = img->buf;
-  *green_pixels = 0;
+  uint32_t local_green_pixels = 0;
 
   // Go through all the pixels
   for (uint16_t y = 0; y < img->h; y++) {
@@ -137,7 +154,7 @@ void apply_threshold(struct image_t *img, uint8_t* green_pixels,
       if ( (*yp >= lum_min) && (*yp <= lum_max) &&
            (*up >= cb_min ) && (*up <= cb_max ) &&
            (*vp >= cr_min ) && (*vp <= cr_max )) {
-            *green_pixels++
+            local_green_pixels++;
             *yp = 255;  // make pixel white
         }
       else {
@@ -145,19 +162,22 @@ void apply_threshold(struct image_t *img, uint8_t* green_pixels,
       }
     }
   }
+  *green_pixels = local_green_pixels;
 }
 
 float get_radial(struct image_t *img, float angle, uint8_t radius) {
     uint8_t *buffer = img->buf;
 
-    uint8_t sum;
-    for (uint8_t i = 0; i < radius; i++) {
-        y = img->h - i * (uint8_t)sin(angle);
-        x = img->w / 2 + i * (uint8_t)cos(angle);
-        sum = sum + &buffer[y * 2 * img->w + 2 * x + 1]
+    uint32_t sum = 0;
+    uint16_t x, y;
+
+    for (double i = 0; i < radius; i++) {
+        y = (uint16_t)((double)img->h - i * sin(angle));
+        x = (uint16_t)((double)img->w / 2 + i * cos(angle));
+        sum = sum + buffer[y * 2 * img->w + 2 * x + 1];
     }
 
-    return (float)sum * (sin(angle) + 0.2)
+    return (float)sum * (sin(angle) + 0.2) ;
 }
 
 void get_direction(struct image_t *img, uint8_t resolution, float* best_heading, float* safe_length) {
@@ -175,5 +195,5 @@ void get_direction(struct image_t *img, uint8_t resolution, float* best_heading,
         }
     }
 
-    *best_heading = M_PI/2 - *best_heading
+    *best_heading = M_PI/2 - *best_heading;
 }

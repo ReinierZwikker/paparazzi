@@ -251,7 +251,7 @@
     <message name="GREEN_DETECTION" id="37">
       <field name="best_heading" type="float">Heading with the most green pixels</field>
       <field name="safe_length"  type="float">Amount of green pixels in given direction</field>
-      <field name="green_pixels" type="uint8_t">Amount of green pixels in the image</field>
+      <field name="green_pixels" type="uint32_t">Amount of green pixels in the image</field>
     </message>
 
   </msg_class>

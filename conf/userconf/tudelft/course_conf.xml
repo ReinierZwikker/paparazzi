@@ -1,6 +1,6 @@
 <conf>
   <aircraft
-   name="bebop_orange_avoid"
+   name="bebop_green_follower"
    ac_id="42"
    airframe="airframes/Group4/bebop_course_green_follower.xml"
    radio="radios/dummy.xml"

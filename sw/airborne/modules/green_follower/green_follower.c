@@ -35,7 +35,6 @@
 #endif
 
 // define settings
-float gf_green_threshold = 0.0f;  // obstacle detection threshold as a fraction of total of image
 //float gf_floor_count_frac = 0.05f; // floor detection threshold as a fraction of total of image
 float gf_set_speed = 1.0f;        // max flight speed [m/s]
 
@@ -80,7 +79,7 @@ void green_follower_periodic(void)
         return;
     }
 
-    float speed_sp = fminf(gf_max_speed, current_safe_length / 100);
+    float speed_sp = fminf(gf_set_speed, current_safe_length / 100);
 
     guidance_h_set_body_vel(speed_sp, 0);
     guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + current_best_heading);

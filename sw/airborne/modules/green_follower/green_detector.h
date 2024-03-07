@@ -7,5 +7,5 @@
 
 #endif //PAPARAZZI_GREEN_DETECTOR_H
 
-extern void color_object_detector_init(void);
-extern void color_object_detector_periodic(void);
+extern void green_detector_init(void);
+extern void green_detector_periodic(void);

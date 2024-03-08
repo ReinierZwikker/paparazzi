@@ -38,7 +38,7 @@
 // define settings
 //float gf_floor_count_frac = 0.05f; // floor detection threshold as a fraction of total of image
 float gf_set_speed = 0.4f;           // max flight speed [m/s]
-float oag_floor_count_frac = 0.05f;  // percentage of the image that needs to be green before turning around
+float oag_floor_count_frac = 0.01f;  // percentage of the image that needs to be green before turning around
 
 // define and initialise global variables
 float current_best_heading = 0.0f;              // heading with the longest available floor space in [rad], where 0 is ahead, positive is right
@@ -90,7 +90,7 @@ void green_follower_periodic(void)
     if (current_green_pixels > floor_count_threshold) {
         float speed_sp = fminf(gf_set_speed, current_safe_length / 100);
 
-        VERBOSE_PRINT("GF: Moving from %f towards %f at %f\n", stateGetNedToBodyEulers_f()->psi, stateGetNedToBodyEulers_f()->psi + current_best_heading, speed_sp);
+        VERBOSE_PRINT("GF: Moving from %f towards %f (d=%f) at %f\n", stateGetNedToBodyEulers_f()->psi, stateGetNedToBodyEulers_f()->psi + current_best_heading, current_best_heading, speed_sp);
 
         guidance_h_set_body_vel(speed_sp, 0);
         guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + current_best_heading);

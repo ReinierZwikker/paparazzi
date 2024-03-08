@@ -174,10 +174,12 @@ float get_radial(struct image_t *img, float angle, uint8_t radius) {
     for (double i = 0; i < radius; i++) {
         y = (uint16_t)((double)img->h - i * sin(angle));
         x = (uint16_t)((double)img->w / 2 + i * cos(angle));
-        sum = sum + buffer[y * 2 * img->w + 2 * x + 1];
+        if (buffer[y * 2 * img->w + 2 * x + 1] == 255) {
+            sum++;
+        }
     }
 
-    return (float)sum * (sin(angle) + 0.2) ;
+    return (float)sum; // * (sin(angle) + 0.2) ;
 }
 
 void get_direction(struct image_t *img, uint8_t resolution, float* best_heading, float* safe_length) {
@@ -186,8 +188,11 @@ void get_direction(struct image_t *img, uint8_t resolution, float* best_heading,
     *best_heading = 0;
     *safe_length = 0;
 
-    for (float angle = 0; angle < M_PI; angle += step_size) {
-        float radial = get_radial(img, angle, img->w / 2);
+    for (float angle = 0.001; angle < M_PI; angle += step_size) {
+        float radial = get_radial(img, angle, img->h - 20);
+
+        // VERBOSE_PRINT("GF: Radial %f is %f\n", angle, radial);
+
 
         if (radial >= *safe_length) {
             *best_heading = angle;

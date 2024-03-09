@@ -8,7 +8,7 @@ def bound(value, lower, upper):
 
 def correlate_line(image, kernel_source, kernel_size,
                    start_x, start_y, end_x, end_y, step=1,
-                   logarithmic_spacing=True, plot=False):
+                   search_distance=20, logarithmic_spacing=True, plot=False):
     """
 
     :param image:

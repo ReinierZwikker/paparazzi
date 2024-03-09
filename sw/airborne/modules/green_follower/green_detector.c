@@ -30,8 +30,8 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 uint8_t gd_lum_min = 60;
 uint8_t gd_lum_max = 130;
 uint8_t gd_cb_min = 75;
-uint8_t gd_cb_max = 110;
-uint8_t gd_cr_min = 120;
+uint8_t gd_cr_min = 110;
+uint8_t gd_cb_max = 120;
 uint8_t gd_cr_max = 140;
 
 static pthread_mutex_t mutex;
@@ -51,7 +51,7 @@ void apply_threshold(struct image_t *img, uint32_t *green_pixels,
 
 float get_radial(struct image_t *img, float angle, uint8_t radius);
 
-void get_direction(struct image_t *img, uint8_t resolution, float* best_heading, float* safe_length);
+void get_direction(struct image_t *img, int resolution, float* best_heading, float* safe_length);
 
 /*
  * object_detector
@@ -74,7 +74,7 @@ static struct image_t *green_heading_finder(struct image_t *img)
     cb_max = gd_cb_max;
     cr_min = gd_cr_min;
     cr_max = gd_cr_max;
-    uint8_t scan_resolution = 50;
+    int scan_resolution = 200;
 
     // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
     apply_threshold(img, &green_pixels, lum_min, lum_max, cb_min, cb_max, cr_min, cr_max);
@@ -172,8 +172,8 @@ float get_radial(struct image_t *img, float angle, uint8_t radius) {
     uint16_t x, y;
 
     for (double i = 0; i < radius; i++) {
-        y = (uint16_t)((double)img->h - i * sin(angle));
-        x = (uint16_t)((double)img->w / 2 + i * cos(angle));
+        y = (uint16_t)((double)img->h - i * sin(M_PI/4 + angle));
+        x = (uint16_t)((double)img->w / 2 + i * cos(M_PI/4 + angle));
         if (buffer[y * 2 * img->w + 2 * x + 1] == 255) {
             sum++;
         }
@@ -182,23 +182,51 @@ float get_radial(struct image_t *img, float angle, uint8_t radius) {
     return (float)sum; // * (sin(angle) + 0.2) ;
 }
 
-void get_direction(struct image_t *img, uint8_t resolution, float* best_heading, float* safe_length) {
+void get_direction(struct image_t *img, int resolution, float* best_heading, float* safe_length) {
 
-    float step_size = M_PI / (float)resolution;
+    float step_size = M_PI/2 / (float)resolution;
     *best_heading = 0;
     *safe_length = 0;
 
-    for (float angle = 0.001; angle < M_PI; angle += step_size) {
-        float radial = get_radial(img, angle, img->h - 20);
+    int counter = 0; //Initialize the counter variable
+    int number_steps_average = 11;
+    int radial_memory[11] = {0};
+
+    for (float angle = 0.001; angle < M_PI/2; angle += step_size) {
+        float radial = get_radial(img, angle, img->h);
+
+        if (counter+1 > number_steps_average){
+            // Move elements one position up and discard the first element
+            for (int i = 0; i < number_steps_average-2; ++i){
+                radial_memory[i] = radial_memory[i+1];
+            }
+            // Store value in the last position
+            radial_memory[number_steps_average - 1] = radial;
+        }else{
+            // Store value in the current position
+            radial_memory[counter] = radial;
+        }
+
 
         // VERBOSE_PRINT("GF: Radial %f is %f\n", angle, radial);
 
-
-        if (radial >= *safe_length) {
-            *best_heading = angle;
-            *safe_length = radial;
+        if (counter >= number_steps_average-1){
+            int average_radial;
+            float angle_in_middle = M_PI/4+angle-(number_steps_average-1)*step_size/2;
+            for (int i = 0; i < number_steps_average; ++i) {
+            //Podriamos poner el weighting multiplicando aqui
+                average_radial += radial_memory[i];
+            }
+            average_radial = average_radial*sin(angle_in_middle)/number_steps_average;
+            if (average_radial >= *safe_length) {
+                *best_heading = angle_in_middle;
+                *safe_length = average_radial;
+            }
         }
+
+        ++counter;
     }
 
-    *best_heading = M_PI/2 - *best_heading;
+    *best_heading = M_PI/4-*best_heading;
+    VERBOSE_PRINT("GF: Angle %f\n", *best_heading);
 }

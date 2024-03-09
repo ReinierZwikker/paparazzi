@@ -1,0 +1,30 @@
+<!DOCTYPE module SYSTEM "module.dtd">
+
+<module name="corr_depth_finder" dir="corr_depth_finder">
+  <doc>
+    <description>ColorFilter</description>
+    <define name="DEPTHFINDER_CAMERA" value="front_camera" description="Video device to use"/>
+    <define name="DEPTHFINDER_FPS" value="0" description="The (maximum) frequency to run the calculations at. If zero, it will max out at the camera frame rate"/>
+  </doc>
+
+<!--  <settings>-->
+<!--    <dl_settings>-->
+<!--      <dl_settings name="GreenDetector">-->
+<!--      </dl_settings>-->
+<!--    </dl_settings>-->
+<!--  </settings>-->
+
+  <dep>
+    <depends>video_thread</depends>
+  </dep>
+
+  <header>
+    <file name="corr_depth_finder.h"/>
+  </header>
+
+  <init fun="corr_depth_finder_init()"/>
+  <periodic fun="corr_depth_finder_periodic()" freq="50"/>
+  <makefile target="ap|nps">
+    <file name="corr_depth_finder.c"/>
+  </makefile>
+</module>

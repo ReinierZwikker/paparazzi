@@ -1,7 +1,3 @@
-//
-// Created by lilly on 6-3-24.
-//
-
 #include "modules/green_follower/green_detector.h"
 #include "modules/computer_vision/cv.h"
 #include "modules/core/abi.h"

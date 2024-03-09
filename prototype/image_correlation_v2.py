@@ -79,7 +79,7 @@ for position in manual_sideways:
 
 for position in manual_incoming:
     locations.append([260 + position[0], 120 + position[1]])
-    directions.append([0, -1])
+    directions.append([0, 1])
     dependencies.append(0)
 
 locations_x = np.array([location[0] for location in locations]).astype(np.uint16)
@@ -103,6 +103,7 @@ for current_image_i in [195]:  # range(len(images)):
     current_image = images[current_image_i]['img']
 
     fig = plt.figure(figsize=(8, 4), layout='constrained')
+    plt.title("Marker Locations with Slices")
     # plt.imshow(images[current_image]['img'], alpha=0.5)
     plt.imshow(current_image, alpha=0.5)
     plt.plot(locations_x[dependencies == 0], locations_y[dependencies == 0], 'rx')
@@ -111,6 +112,14 @@ for current_image_i in [195]:  # range(len(images)):
     plt.plot(locations_x[dependencies == 1], locations_y[dependencies == 1], 'bx')
     plt.plot(locations_x[dependencies == 1], locations_y[dependencies == 1], 'bs',
              linestyle='none', markerfacecolor='none', markersize=kernel_size)
+    plt.show()
+
+    fig = plt.figure(figsize=(8, 4), layout='constrained')
+    plt.title("Marker Locations")
+    # plt.imshow(images[current_image]['img'], alpha=0.5)
+    plt.imshow(current_image, alpha=0.5)
+    plt.plot(locations_x[dependencies == 0], locations_y[dependencies == 0], 'rx')
+    plt.plot(locations_x[dependencies == 1], locations_y[dependencies == 1], 'bx')
     plt.show()
 
     results = np.zeros((amount_of_locations, amount_of_steps))
@@ -203,6 +212,7 @@ for current_image_i in [195]:  # range(len(images)):
     max_indices = np.zeros(amount_of_locations)
 
     fig = plt.figure(figsize=(8, 4), layout='constrained')
+    plt.title("Correlation over Slice movement")
     for row_i in range(amount_of_locations):
         stds.append(np.std(results[row_i, :]))
         if np.std(results[row_i, :]) < 0.02:
@@ -219,14 +229,17 @@ for current_image_i in [195]:  # range(len(images)):
     max_indices /= max(max(max_indices), 1)
 
     fig = plt.figure(figsize=(8, 2), layout='constrained')
+    plt.title("Correlation over Slice movement")
     plt.imshow(results.transpose())
     plt.show()
 
     fig = plt.figure(figsize=(8, 4), layout='constrained')
+    plt.title("Standard Deviations")
     plt.plot(stds, 'k')
     plt.show()
 
     fig = plt.figure(figsize=(8, 4), layout='constrained')
+    plt.title("Max Indices of relevant evaluation locations")
     plt.plot(max_indices, 'k')
     plt.show()
 
@@ -241,6 +254,7 @@ for current_image_i in [195]:  # range(len(images)):
     # plt.imsave(f"../data/renders/v2/depth/{current_image_i}.png", placed_result)
 
     fig = plt.figure(figsize=(8, 4), layout='constrained')
+    plt.title("Correlation Depth Finder")
     plt.imshow(current_image, alpha=0.5)
     plt.imshow(placed_result, alpha=0.5)
     plt.show()

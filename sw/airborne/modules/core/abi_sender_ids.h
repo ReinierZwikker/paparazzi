@@ -636,4 +636,12 @@
 #define VEL_SP_FCR_ID 1 // Approach Moving Target
 #endif
 
+/*
+ * IDs of Group4 senders
+ */
+
+#ifndef GREEN_DETECTION_ID
+#define GREEN_DETECTION_ID 37 // Approach Moving Target
+#endif
+
 #endif /* ABI_SENDER_IDS_H */

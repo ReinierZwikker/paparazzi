@@ -74,7 +74,7 @@ static struct image_t *green_heading_finder(struct image_t *img)
     cb_max = gd_cb_max;
     cr_min = gd_cr_min;
     cr_max = gd_cr_max;
-    int scan_resolution = 200;
+    int scan_resolution = 500;
 
     // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
     apply_threshold(img, &green_pixels, lum_min, lum_max, cb_min, cb_max, cr_min, cr_max);
@@ -193,7 +193,7 @@ void get_direction(struct image_t *img, int resolution, float* best_heading, flo
     int radial_memory[11] = {0};
 
     for (float angle = 0.001; angle < M_PI/2; angle += step_size) {
-        float radial = get_radial(img, angle, img->h);
+        float radial = get_radial(img, angle, img->h-20);
 
         if (counter+1 > number_steps_average){
             // Move elements one position up and discard the first element
@@ -208,17 +208,18 @@ void get_direction(struct image_t *img, int resolution, float* best_heading, flo
         }
 
 
-        // VERBOSE_PRINT("GF: Radial %f is %f\n", angle, radial);
+        //VERBOSE_PRINT("GF: Radial %f is %f\n", angle, radial);
 
         if (counter >= number_steps_average-1){
-            int average_radial;
-            float angle_in_middle = M_PI/4+angle-(number_steps_average-1)*step_size/2;
+            int average_radial = 0;
+            float angle_in_middle = M_PI/4 + angle - (number_steps_average-1)*step_size/2;
             for (int i = 0; i < number_steps_average; ++i) {
             //Podriamos poner el weighting multiplicando aqui
                 average_radial += radial_memory[i];
             }
             average_radial = average_radial*sin(angle_in_middle)/number_steps_average;
-            if (average_radial >= *safe_length) {
+            //VERBOSE_PRINT("angle middle %f and average_radial %f\n",average_radial,angle_in_middle);
+            if (average_radial > *safe_length) {
                 *best_heading = angle_in_middle;
                 *safe_length = average_radial;
             }
@@ -226,7 +227,7 @@ void get_direction(struct image_t *img, int resolution, float* best_heading, flo
 
         ++counter;
     }
-
-    *best_heading = M_PI/4-*best_heading;
-    VERBOSE_PRINT("GF: Angle %f\n", *best_heading);
+    VERBOSE_PRINT("GF: Angle %f and length %f\n", *best_heading,*safe_length);
+    *best_heading = M_PI/2-*best_heading;
+    //*best_heading = 0;
 }

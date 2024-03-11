@@ -110,6 +110,7 @@ void set_color_yuv422(struct image_t *im, int x, int y, uint8_t Y, uint8_t U, ui
 void image_yuv422_downsample(struct image_t *input, struct image_t *output, uint8_t downsample);
 void image_subpixel_window(struct image_t *input, struct image_t *output, struct point_t *center,
                            uint32_t subpixel_factor, uint8_t border_size);
+void image_window(struct image_t *input, struct image_t *output, struct point_t *center);
 void image_gradients(struct image_t *input, struct image_t *dx, struct image_t *dy);
 void image_calculate_g(struct image_t *dx, struct image_t *dy, int32_t *g);
 uint32_t image_difference(struct image_t *img_a, struct image_t *img_b, struct image_t *diff);

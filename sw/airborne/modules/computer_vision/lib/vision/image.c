@@ -540,6 +540,46 @@ void image_subpixel_window(struct image_t *input, struct image_t *output, struct
 }
 
 /**
+ * This outputs a window of the image in YUV422
+ * You can and should only ask a window of a center point that is w/2 pixels away from the edges.
+ * The output image should be smaller than the input image
+ * @param[in] *input Input image (YUV422 only)
+ * @param[out] *output Window output (width and height is used to calculate the window size)
+ * @param[in] *center Center point in pixel coordinates
+ */
+void image_window(struct image_t *input, struct image_t *output, struct point_t *center)
+{
+  uint8_t *input_buf = (uint8_t *)input->buf;
+  uint8_t *output_buf = (uint8_t *)output->buf;
+
+  uint16_t orig_x = center->x - (output->w / 2);
+  uint16_t orig_y = center->y - (output->h / 2);
+
+  if (orig_x % 2 == 0) {
+    uint16_t color_shift = 0;
+  } else {
+    uint16_t color_shift = 2;
+  }
+
+  for (uint16_t output_x = 0; output_x < output->w; output_x++) {
+    for (uint16_t output_y = 0; output_y < output->h; output_y++) {
+
+      uint16_t input_x = orig_x + output_x;
+      uint16_t input_y = orig_y + output_y;
+
+      // Y
+      output_buf[2 * output->w * output_y + 2 * output_x + 1] = input_buf[2 * input->w * input_y + 2 * input_x + 1];
+      // UV
+      output_buf[2 * output->w * output_y + 2 * output_x] = input_buf[2 * input->w * input_y + 2 * input_x + color_shift];
+    }
+  }
+}
+
+
+
+
+
+/**
  * Calculate the  gradients using the following matrix:
  * [0 -1 0; -1 0 1; 0 1 0]
  * @param[in] *input Input grayscale image

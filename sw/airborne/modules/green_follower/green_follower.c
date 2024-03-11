@@ -94,18 +94,17 @@ void green_follower_periodic(void)
         waiting_cycles--;
     }
     else if (current_green_pixels > floor_count_threshold) {*/
-    if (current_green_pixels > floor_count_threshold) {
-        float speed_sp = fminf(gf_set_speed, current_safe_length / 100);
+    if (current_green_pixels > floor_count_threshold && current_safe_length > 15) {
+      float speed_sp = fminf(gf_set_speed, current_safe_length / 100);
 
         //VERBOSE_PRINT("GF: Moving from %f towards %f (d=%f) at %f\n", stateGetNedToBodyEulers_f()->psi, stateGetNedToBodyEulers_f()->psi + current_best_heading, current_best_heading, speed_sp);
 
         guidance_h_set_body_vel(speed_sp, 0);
-        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + current_best_heading);
-    }
-    else {
+        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + 2 * current_best_heading);
+    } else {
         //VERBOSE_PRINT("GF: ESCAPING! Floor threshold: %d / %d\n", current_green_pixels, floor_count_threshold);
 
-        guidance_h_set_body_vel(0.0f, 0);
+        guidance_h_set_body_vel(-0.2f, 0);
         guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + M_PI/4);
         //waiting_cycles = 4;
     }

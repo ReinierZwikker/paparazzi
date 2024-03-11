@@ -221,7 +221,7 @@ void get_direction(struct image_t *img, int resolution, float* best_heading, flo
             //Podriamos poner el weighting multiplicando aqui
                 //average_radial += radial_memory[i];
                 //average_radial += radial_memory[i]*sin(((M_PI/6 + angle - (number_steps_average-1-i)*step_size)-M_PI/6)*M_PI/(5*M_PI/6-M_PI/6));
-                average_radial += radial_memory[i]*sin(angle - (number_steps_average-1-i)*step_size);
+                average_radial += radial_memory[i] * 0.75 * sin(angle - (number_steps_average-1-i)*step_size);
             }
             //average_radial = average_radial*sin((angle_in_middle-M_PI/6)*M_PI/(5*M_PI/6-M_PI/6))/number_steps_average;
             average_radial = average_radial/number_steps_average;

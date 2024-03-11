@@ -555,10 +555,12 @@ void image_window(struct image_t *input, struct image_t *output, struct point_t 
   uint16_t orig_x = center->x - (output->w / 2);
   uint16_t orig_y = center->y - (output->h / 2);
 
+  uint16_t color_shift;
+
   if (orig_x % 2 == 0) {
-    uint16_t color_shift = 0;
+    color_shift = 0;
   } else {
-    uint16_t color_shift = 2;
+    color_shift = 2;
   }
 
   for (uint16_t output_x = 0; output_x < output->w; output_x++) {

@@ -183,10 +183,6 @@ const struct eval_locations global_eval_locations;
 struct image_t previous_image;
 struct image_t *previous_image_p;
 
-struct image_t slice;
-struct image_t *slice_p;
-
-
 static pthread_mutex_t mutex;
 
 struct depth_object_t {
@@ -211,11 +207,31 @@ struct depth_object_t global_depth_object;
  * @param img - input image to process
  * @return img
  */
-static struct image_t *corr_depth_finder(struct image_t *img_p)
+static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 {
+  struct depth_object_t local_depth_object;
+  struct image_t previous_slice, current_slice;
+
+  struct point_t slice_center, step_center;
 
   for (uint8_t slice_i = 0; slice_i < 207; slice_i++) {
-    image_window(img_p, slice_p, struct point_t(...) )
+    slice_center.x = global_eval_locations.x_directions[slice_i];
+    slice_center.y = global_eval_locations.y_directions[slice_i];
+
+    step_center = slice_center;
+
+    image_window(previous_image_p, &previous_slice, &slice_center);
+
+    uint32_t delta_x = ;
+    uint32_t delta_y = ;
+
+
+    for (uint8_t step_i = 0; step_i < 207; step_i++) {
+      step_center.x +=
+      image_window(current_image_p, &current_slice, &step_center);
+
+    }
+
   }
 
   // TODO Do stuff here
@@ -244,7 +260,6 @@ void corr_depth_finder_init(void) {
   slice->h = slice->w = slice_size;
 
   previous_image_p = malloc(previous_image);
-  slice_p = malloc(slice);
 
   //#ifdef GREEN_DETECTOR_LUM_MIN
   //  gd_lum_min = GREEN_DETECTOR_LUM_MIN;

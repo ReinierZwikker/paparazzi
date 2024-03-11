@@ -7,11 +7,11 @@ import pandas as pd
 
 selected_images = range(105, 140)  # 'all' or specific [###, ###, ..., ###] or range(start, stop, step)
 amount_of_steps = 25
-kernel_size = 50
+slice_size = 50
 
-kernel_extend = int(kernel_size / 2)
+slice_extend = int(slice_size / 2)
 
-# == Loading dataset ==
+# === Loading dataset ===
 file_names = []
 for _, _, file_names in walk("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190121-142935"):
     break
@@ -26,6 +26,7 @@ images = sorted(images, key=lambda x: x['time'])
 with open("../data/dataset/AE4317_2019_datasets/cyberzoo_poles_panels_mats/20190121-142943.csv") as csv_file:
     dataframe = pd.read_csv(csv_file)
 
+# === Locations generation ===
 locations = []      # Location of Eval points in [x,y]
 directions = []     # (Positive) Eval direction in [dx,dy]
 dependencies = []   # 0 for radial (forward motion), 1 for sideways motion (+ towards right)
@@ -50,8 +51,8 @@ for radial_list in radial_lists:
             radial_rad = radial / 180 * np.pi
             position_x = 260 + distance * np.cos(radial_rad)
             position_y = 120 + distance * np.sin(radial_rad)
-            if kernel_extend < position_x < 520 - kernel_extend:
-                if kernel_extend < position_y < 240 - kernel_extend:
+            if slice_extend < position_x < 520 - slice_extend:
+                if slice_extend < position_y < 240 - slice_extend:
                     locations.append([position_x, position_y])
                     directions.append([np.cos(radial_rad), np.sin(radial_rad)])
                     dependencies.append(0)
@@ -60,14 +61,14 @@ for sideways_line in sideways_lines:
     for distance in range(0, 260, sideways_resolution):
         position_x = 260 + distance
         position_y = 120 + sideways_line
-        if kernel_extend < position_x < 520 - kernel_extend:
-            if kernel_extend < position_y < 240 - kernel_extend:
+        if slice_extend < position_x < 520 - slice_extend:
+            if slice_extend < position_y < 240 - slice_extend:
                 locations.append([position_x, position_y])
                 directions.append([1, 0])
                 dependencies.append(1)
         position_x = 260 - distance
-        if kernel_extend < position_x < 520 - kernel_extend:
-            if kernel_extend < position_y < 240 - kernel_extend:
+        if slice_extend < position_x < 520 - slice_extend:
+            if slice_extend < position_y < 240 - slice_extend:
                 locations.append([position_x, position_y])
                 directions.append([1, 0])
                 dependencies.append(1)
@@ -108,10 +109,10 @@ for current_image_i in [195]:  # range(len(images)):
     plt.imshow(current_image, alpha=0.5)
     plt.plot(locations_x[dependencies == 0], locations_y[dependencies == 0], 'rx')
     plt.plot(locations_x[dependencies == 0], locations_y[dependencies == 0], 'rs',
-             linestyle='none', markerfacecolor='none', markersize=kernel_size)
+             linestyle='none', markerfacecolor='none', markersize=slice_size)
     plt.plot(locations_x[dependencies == 1], locations_y[dependencies == 1], 'bx')
     plt.plot(locations_x[dependencies == 1], locations_y[dependencies == 1], 'bs',
-             linestyle='none', markerfacecolor='none', markersize=kernel_size)
+             linestyle='none', markerfacecolor='none', markersize=slice_size)
     plt.show()
 
     fig = plt.figure(figsize=(8, 4), layout='constrained')
@@ -169,8 +170,8 @@ for current_image_i in [195]:  # range(len(images)):
     for eval_i in range(amount_of_locations):
 
         previous_slice = previous_image[
-                             int(locations_y[eval_i] - kernel_extend):int(locations_y[eval_i] + kernel_extend),
-                             int(locations_x[eval_i] - kernel_extend):int(locations_x[eval_i] + kernel_extend),
+                             int(locations_y[eval_i] - slice_extend):int(locations_y[eval_i] + slice_extend),
+                             int(locations_x[eval_i] - slice_extend):int(locations_x[eval_i] + slice_extend),
                              :]
 
         previous_slice = previous_slice / np.linalg.norm(previous_slice)
@@ -188,14 +189,14 @@ for current_image_i in [195]:  # range(len(images)):
             current_location_x = locations_x[eval_i] + step_i * directions_x[eval_i] * speed_factor
             current_location_y = locations_y[eval_i] + step_i * directions_y[eval_i] * speed_factor
 
-            if 0 < current_location_x - kernel_extend < 520 and \
-               0 < current_location_x + kernel_extend < 520 and \
-               0 < current_location_y - kernel_extend < 240 and \
-               0 < current_location_y + kernel_extend < 240:
+            if 0 < current_location_x - slice_extend < 520 and \
+               0 < current_location_x + slice_extend < 520 and \
+               0 < current_location_y - slice_extend < 240 and \
+               0 < current_location_y + slice_extend < 240:
 
                 current_slice = current_image[
-                                 int(current_location_y - kernel_extend):int(current_location_y + kernel_extend),
-                                 int(current_location_x - kernel_extend):int(current_location_x + kernel_extend),
+                                 int(current_location_y - slice_extend):int(current_location_y + slice_extend),
+                                 int(current_location_x - slice_extend):int(current_location_x + slice_extend),
                                  :]
 
                 current_slice = current_slice / np.linalg.norm(current_slice)
@@ -258,6 +259,3 @@ for current_image_i in [195]:  # range(len(images)):
     plt.imshow(current_image, alpha=0.5)
     plt.imshow(placed_result, alpha=0.5)
     plt.show()
-
-
-

@@ -89,11 +89,12 @@ void green_follower_periodic(void)
 //    VERBOSE_PRINT("GF: floor threshold: %d / %d\n", current_green_pixels, floor_count_threshold);
     float percentage = current_green_pixels*100/(520*240);
     //VERBOSE_PRINT("GF: floor threshold: %d / %d = %f\n", current_green_pixels, floor_count_threshold,percentage);
-    if (waiting_cycles > 0){
+    /*if (waiting_cycles > 0){
         guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + M_PI/20);
         waiting_cycles--;
     }
-    else if (current_green_pixels > floor_count_threshold) {
+    else if (current_green_pixels > floor_count_threshold) {*/
+    if (current_green_pixels > floor_count_threshold) {
         float speed_sp = fminf(gf_set_speed, current_safe_length / 100);
 
         //VERBOSE_PRINT("GF: Moving from %f towards %f (d=%f) at %f\n", stateGetNedToBodyEulers_f()->psi, stateGetNedToBodyEulers_f()->psi + current_best_heading, current_best_heading, speed_sp);
@@ -105,8 +106,8 @@ void green_follower_periodic(void)
         //VERBOSE_PRINT("GF: ESCAPING! Floor threshold: %d / %d\n", current_green_pixels, floor_count_threshold);
 
         guidance_h_set_body_vel(0.0f, 0);
-        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + M_PI/20);
-        waiting_cycles = 4;
+        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + M_PI/4);
+        //waiting_cycles = 4;
     }
 
     return;

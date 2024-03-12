@@ -176,18 +176,19 @@ for current_image_i in [195]:  # range(len(images)):
 
         previous_slice = previous_slice / np.linalg.norm(previous_slice)
 
-        for step_i in range(amount_of_steps):
-            if dependencies[eval_i] == 0:
-                speed_factor = vel_body[1]
-            else:
-                speed_factor = vel_body[0]
-            if 0 < speed_factor < 1:
-                speed_factor = 1
-            if 0 > speed_factor > -1:
-                speed_factor = -1
+        # if dependencies[eval_i] == 0:
+        #     speed_factor = vel_body[1]
+        # else:
+        #     speed_factor = vel_body[0]
+        # if 0 < speed_factor < 1:
+        #     speed_factor = 1
+        # if 0 > speed_factor > -1:
+        #     speed_factor = -1
 
-            current_location_x = locations_x[eval_i] + step_i * directions_x[eval_i] * speed_factor
-            current_location_y = locations_y[eval_i] + step_i * directions_y[eval_i] * speed_factor
+        for step_i in range(amount_of_steps):
+
+            current_location_x = locations_x[eval_i] + step_i * directions_x[eval_i]  # * speed_factor
+            current_location_y = locations_y[eval_i] + step_i * directions_y[eval_i]  # * speed_factor
 
             if 0 < current_location_x - slice_extend < 520 and \
                0 < current_location_x + slice_extend < 520 and \

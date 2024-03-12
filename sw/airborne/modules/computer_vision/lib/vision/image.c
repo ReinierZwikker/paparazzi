@@ -577,10 +577,6 @@ void image_window(struct image_t *input, struct image_t *output, struct point_t 
   }
 }
 
-
-
-
-
 /**
  * Calculate the  gradients using the following matrix:
  * [0 -1 0; -1 0 1; 0 1 0]

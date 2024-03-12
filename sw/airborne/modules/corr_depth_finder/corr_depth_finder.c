@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <math.h>
 #include "pthread.h"
+#include "state.h"
 
 #ifndef DEPTHFINDER_FPS
 #define DEPTHFINDER_FPS 0       ///< Default FPS (zero means run at camera fps)
@@ -29,6 +30,8 @@ PRINT_CONFIG_VAR(DEPTHFINDER_FPS)
 const uint8_t amount_of_steps = 25;
 const uint8_t slice_size = 50;
 const uint8_t slice_extend = slice_size / 2;
+const float max_std = 0.02f;
+const bool draw = true;
 
 // Predefined evaluation location, direction and dependency on forward or sideways motion
 const struct eval_locations {
@@ -180,10 +183,12 @@ const struct eval_locations {
 };
 const struct eval_locations global_eval_locations;
 
+const float[5] zone_headings = {-M_PI/2, -M_PI/4, 0, M_PI/4, M_PI/2};
+
 struct image_t previous_image;
 struct image_t *previous_image_p;
 
-static pthread_mutex_t mutex;
+static pthread_mutex_t mutex_depth, mutex_heading;
 
 struct depth_object_t {
     float[207] depth;
@@ -191,19 +196,15 @@ struct depth_object_t {
 };
 struct depth_object_t global_depth_object;
 
-
-
-//void apply_threshold(struct image_t *img, uint32_t *green_pixels,
-//                     uint8_t lum_min, uint8_t lum_max,
-//                     uint8_t cb_min, uint8_t cb_max,
-//                     uint8_t cr_min, uint8_t cr_max);
-//
-//float get_radial(struct image_t *img, float angle, uint8_t radius);
-//
-//void get_direction(struct image_t *img, uint8_t resolution, float* best_heading, float* safe_length);
+struct heading_object_t {
+    float best_heading;
+    float safe_length;
+    bool updated;
+};
+struct heading_object_t global_heading_object;
 
 /*
- * object_detector
+ * depth_finder_detector
  * @param img - input image to process
  * @return img
  */
@@ -212,35 +213,132 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
   struct depth_object_t local_depth_object;
   struct image_t previous_slice, current_slice;
 
-  struct point_t slice_center, step_center;
+  float[amount_of_steps] correlations;
+  float mean, std;
+
+  previous_slice.w = slice_size;
+  previous_slice.h = slice_size;
+  current_slice.w = slice_size;
+  current_slice.h = slice_size;
+
+  struct point_t previous_slice_center, current_slice_center;
 
   for (uint8_t slice_i = 0; slice_i < 207; slice_i++) {
-    slice_center.x = global_eval_locations.x_directions[slice_i];
-    slice_center.y = global_eval_locations.y_directions[slice_i];
+    memset(&correlations, 0.0f, amount_of_steps * sizeof(float))
+    mean = std = 0.0f;
+    distance = 0.0f;
 
-    step_center = slice_center;
+    previous_slice_center.x = global_eval_locations.x_locations[slice_i];
+    previous_slice_center.y = global_eval_locations.y_locations[slice_i];
 
-    image_window(previous_image_p, &previous_slice, &slice_center);
+    // Get previous slice from previous image around the slice center
+    image_window(previous_image_p, &previous_slice, &previous_slice_center);
 
-    uint32_t delta_x = ;
-    uint32_t delta_y = ;
+    for (uint8_t step_i = 0; step_i < amount_of_steps; step_i++) {
+      // TODO check if correct
+      current_slice_center.x = previous_slice_center.x + (uint32_t)(step_i * global_eval_locations.x_directions[slice_i]);
+      current_slice_center.y = previous_slice_center.y + (uint32_t)(step_i * global_eval_locations.y_directions[slice_i]);
 
+      // Bounds checking
+      if (current_slice_center.x - slice_extend > 0                    &&
+          current_slice_center.x + slice_extend < current_image_p->w-1 &&
+          current_slice_center.y - slice_extend > 0                    &&
+          current_slice_center.y + slice_extend < current_image_p->h)
+      {
+        image_window(current_image_p, &current_slice, &current_slice_center);
 
-    for (uint8_t step_i = 0; step_i < 207; step_i++) {
-      step_center.x +=
-      image_window(current_image_p, &current_slice, &step_center);
+        // Shift color to correct for U and V unevenness
+        uint8_t = color_shift;
+        if ((step_i % 2 == 0 && slice_i % 2 == 0) || (step_i % 2 != 0 && slice_i % 2 != 0)) {
+          color_shift = 0;
+        }
+        else {
+          color_shift = 2;
+        }
 
+        // Elementwise multiplication and summation of the current_slice with the previous_slice
+        uint8_t = y_location, uv_location;
+        for (uint8_t x = 0; x < current_slice.w; x++) {
+          for (uint8_t y = 0; y < current_slice.h; y++) {
+            // Y
+            y_location = 2 * current_slice.w * y + 2 * x + 1;
+            correlations[step_i] += (float)current_slice.buf[y_location] *
+                                    (float)previous_slice.buf[y_location];
+            // UV
+            uv_location = 2 * current_slice.w * y + 2 * x;
+            correlations[step_i] += (float)current_slice.buf[uv_location + color_shift] *
+                                    (float)previous_slice.buf[uv_location];
+          }
+        }
+
+        mean += correlations[step_i];
+      }
     }
 
+    // Find standard deviation of steps
+    mean /= (float) amount_of_steps;
+    for (uint8_t step_i = 0; step_i < amount_of_steps; step_i++) {
+      std += powf((correlations[step_i] - mean), 2);
+    }
+    std = sqrtf(std / (float) amount_of_steps);
+
+    // Only consider this slice if the standard deviation is "high enough" ™
+    if (std > max_std) {
+      // Argmax of the correlations at the current eval location
+      uint8_t max_i = 0;
+      for (uint8_t step_i = 0; step_i < amount_of_steps; step_i++) {
+        if (correlations[step_i] > correlations[max_i]) {
+          max_i = step_i;
+        }
+      }
+
+      // TODO maybe divide by body velocity (forward or sideways dependent on dependency array)
+      local_depth_object[slice_i] = (float) max_i / (float) amount_of_steps;
+
+      if (draw) {
+        current_image_p->buf[2 * current_image_p->w * previous_slice_center.y + 2 * previous_slice_center.x + 1] =
+                (uint8_t) (local_depth_object[slice_i] * 255);
+      }
+    }
   }
 
-  // TODO Do stuff here
+  if (HEADING_MODE) {
+    float[5] zone_busyness = {0, 0, 0, 0, 0};
+    uint8_t zone_selection;
 
-  pthread_mutex_lock(&mutex);
-  // TODO Write to mutex here
-  global_depth_object.updated = true;
-  pthread_mutex_unlock(&mutex);
+    for (uint8_t slice_i = 0; slice_i < 207; slice_i++) {
+      if (global_eval_locations.x_locations[slice_i] < 120) {
+        zone_selection = 0;
+      } else if (global_eval_locations.x_locations[slice_i] < 210) {
+        zone_selection = 1;
+      } else if (global_eval_locations.x_locations[slice_i] < 310) {
+        zone_selection = 2;
+      } else if (global_eval_locations.x_locations[slice_i] < 400) {
+        zone_selection = 3;
+      } else {
+        zone_selection = 4;
+      }
 
+      zone_busyness[zone_selection] += local_depth_object[slice_i];
+    }
+
+    uint8_t min_zone_i = 0;
+    for (uint8_t zone_i = 0; zone_i < 5; zone_i++) {
+      if (zone_busyness[zone_i] < zone_busyness[min_zone_i]) {
+        min_zone_i = zone_i;
+      }
+
+    pthread_mutex_lock(&mutex_heading);
+    global_heading_object.best_heading = zone_headings[min_zone_i];
+    global_heading_object.safe_length = 100;
+    global_heading_object.updated = true;
+    pthread_mutex_unlock(&mutex_heading);
+  } else {
+    pthread_mutex_lock(&mutex_depth);
+    global_depth_object.depth = local_depth_object.depth;
+    global_depth_object.updated = true;
+    pthread_mutex_unlock(&mutex_depth);
+  }
   // Possible optimisation: Only save necessary slices?
   memcpy(previous_image_p, img_p, sizeof(struct image_t));
 
@@ -255,7 +353,10 @@ struct image_t *corr_depth_finder1(struct image_t *img, uint8_t camera_id __attr
 
 void corr_depth_finder_init(void) {
   memset(&global_depth_object, 0, sizeof(struct depth_object_t));
-  pthread_mutex_init(&mutex, NULL);
+  memset(&global_heading_object, 0, sizeof(struct heading_object_t));
+
+  pthread_mutex_init(&mutex_heading, NULL);
+  pthread_mutex_init(&mutex_depth, NULL);
 
   slice->h = slice->w = slice_size;
 
@@ -274,95 +375,27 @@ void corr_depth_finder_init(void) {
 }
 
 void corr_depth_finder_periodic(void) {
-  static struct depth_object_t local_depth_object;
-  pthread_mutex_lock(&mutex);
-  memcpy(&local_depth_object, &global_depth_object, sizeof(struct depth_object_t));
-  pthread_mutex_unlock(&mutex);
+  if (HEADING_MODE) {
+    static struct heading_object_t local_heading_object;
 
-  if(local_depth_object.updated){
-    AbiSendMsgCORR_DEPTH_FINDER(CORR_DEPTH_ID, <message here>);
-    local_depth_object.updated = false;
+    pthread_mutex_lock(&mutex_heading);
+    memcpy(&local_heading_object, &global_heading_object, sizeof(struct heading_object_t));
+    pthread_mutex_unlock(&mutex_heading);
+
+    if(local_heading_object.updated) {
+      AbiSendMsgCORR_DEPTH_FINDER(CORR_DEPTH_ID, local_heading_object.best_heading, local_heading_object.safe_length);
+      local_heading_object.updated = false;
+    }
+  } else {
+    static struct depth_object_t local_depth_object;
+
+    pthread_mutex_lock(&mutex_depth);
+    memcpy(&local_depth_object, &global_depth_object, sizeof(struct depth_object_t));
+    pthread_mutex_unlock(&mutex_depth);
+
+    if(local_depth_object.updated){
+      AbiSendMsgCORR_DEPTH_FINDER(CORR_DEPTH_ID, local_depth_object.depth);
+      local_depth_object.updated = false;
+    }
   }
 }
-
-
-
-//
-//
-//void apply_threshold(struct image_t *img, uint32_t* green_pixels,
-//                     uint8_t lum_min, uint8_t lum_max,
-//                     uint8_t cb_min, uint8_t cb_max,
-//                     uint8_t cr_min, uint8_t cr_max)
-//{
-//  uint8_t *buffer = img->buf;
-//  uint32_t local_green_pixels = 0;
-//
-//  // Go through all the pixels
-//  for (uint16_t y = 0; y < img->h; y++) {
-//    for (uint16_t x = 0; x < img->w; x ++) {
-//      // Check if the color is inside the specified values
-//      uint8_t *yp, *up, *vp;
-//      if (x % 2 == 0) {
-//        // Even x
-//        up = &buffer[y * 2 * img->w + 2 * x];      // U
-//        yp = &buffer[y * 2 * img->w + 2 * x + 1];  // Y1
-//        vp = &buffer[y * 2 * img->w + 2 * x + 2];  // V
-//        //yp = &buffer[y * 2 * img->w + 2 * x + 3]; // Y2
-//      } else {
-//        // Uneven x
-//        up = &buffer[y * 2 * img->w + 2 * x - 2];  // U
-//        //yp = &buffer[y * 2 * img->w + 2 * x - 1]; // Y1
-//        vp = &buffer[y * 2 * img->w + 2 * x];      // V
-//        yp = &buffer[y * 2 * img->w + 2 * x + 1];  // Y2
-//      }
-//      if ( (*yp >= lum_min) && (*yp <= lum_max) &&
-//           (*up >= cb_min ) && (*up <= cb_max ) &&
-//           (*vp >= cr_min ) && (*vp <= cr_max )) {
-//        local_green_pixels++;
-//        *yp = 255;  // make pixel white
-//      }
-//      else {
-//        *yp = 0; // make pixel black
-//      }
-//    }
-//  }
-//  *green_pixels = local_green_pixels;
-//}
-//
-//float get_radial(struct image_t *img, float angle, uint8_t radius) {
-//  uint8_t *buffer = img->buf;
-//
-//  uint32_t sum = 0;
-//  uint16_t x, y;
-//
-//  for (double i = 0; i < radius; i++) {
-//    y = (uint16_t)((double)img->h - i * sin(angle));
-//    x = (uint16_t)((double)img->w / 2 + i * cos(angle));
-//    if (buffer[y * 2 * img->w + 2 * x + 1] == 255) {
-//      sum++;
-//    }
-//  }
-//
-//  return (float)sum; // * (sin(angle) + 0.2) ;
-//}
-//
-//void get_direction(struct image_t *img, uint8_t resolution, float* best_heading, float* safe_length) {
-//
-//  float step_size = M_PI / (float)resolution;
-//  *best_heading = 0;
-//  *safe_length = 0;
-//
-//  for (float angle = 0.001; angle < M_PI; angle += step_size) {
-//    float radial = get_radial(img, angle, img->h - 20);
-//
-//    // VERBOSE_PRINT("GF: Radial %f is %f\n", angle, radial);
-//
-//
-//    if (radial >= *safe_length) {
-//      *best_heading = angle;
-//      *safe_length = radial;
-//    }
-//  }
-//
-//  *best_heading = M_PI/2 - *best_heading;
-//}

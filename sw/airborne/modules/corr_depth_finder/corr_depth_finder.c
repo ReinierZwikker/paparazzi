@@ -15,7 +15,10 @@
 #ifndef DEPTHFINDER_FPS
 #define DEPTHFINDER_FPS 0       ///< Default FPS (zero means run at camera fps)
 #endif
-PRINT_CONFIG_VAR(DEPTHFINDER_FPS)
+
+#ifndef HEADING_MODE
+#define HEADING_MODE true       ///< Default navigation mode is heading mode
+#endif
 
 #define DEPTHFINDER_VERBOSE TRUE
 

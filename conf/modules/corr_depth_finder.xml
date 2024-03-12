@@ -5,6 +5,7 @@
     <description>ColorFilter</description>
     <define name="DEPTHFINDER_CAMERA" value="front_camera" description="Video device to use"/>
     <define name="DEPTHFINDER_FPS" value="0" description="The (maximum) frequency to run the calculations at. If zero, it will max out at the camera frame rate"/>
+    <define name="HEADING_MODE" value="true" description="If true, uses the best heading to navigate, otherwise uses WIP"/>
   </doc>
 
 <!--  <settings>-->

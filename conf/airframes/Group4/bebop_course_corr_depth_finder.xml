@@ -42,7 +42,7 @@
             <define name="VIDEO_CAPTURE_CAMERA" value="front_camera"/>
             <define name="VIDEO_CAPTURE_FPS" value="10"/>
         </module>
-        <module name="depth_sensor">
+        <module name="corr_depth_finder">
             <define name="CORR_DEPTH_FINDER_CAMERA" value="front_camera"/>
             <define name="DEPTHFINDER_FPS" value="0"/>
             <define name="HEADING_MODE" value="true"/>

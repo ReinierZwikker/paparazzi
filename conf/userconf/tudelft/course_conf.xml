@@ -2,7 +2,7 @@
   <aircraft
    name="bebop_green_follower"
    ac_id="42"
-   airframe="airframes/Group4/bebop_course_green_follower.xml"
+   airframe="airframes/Group4/bebop_course_corr_depth_finder.xml"
    radio="radios/dummy.xml"
    telemetry="telemetry/default_rotorcraft.xml"
    flight_plan="flight_plans/tudelft/course_orangeavoid_cyberzoo_guided.xml"

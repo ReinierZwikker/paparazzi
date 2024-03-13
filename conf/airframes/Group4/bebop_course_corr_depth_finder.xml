@@ -43,12 +43,13 @@
             <define name="VIDEO_CAPTURE_FPS" value="10"/>
         </module>
         <module name="corr_depth_finder">
-            <define name="CORR_DEPTH_FINDER_CAMERA" value="front_camera"/>
+            <define name="DEPTHFINDER_CAMERA" value="front_camera"/>
+            <define name="GREENFILTER_CAMERA" value="front_camera"/>
             <define name="DEPTHFINDER_FPS" value="0"/>
             <define name="HEADING_MODE" value="true"/>
         </module>
         <module name="green_follower">
-            <define name="GREEN_FOLLOWER_VISUAL_DETECTION_ID" value="DEPTH_FINDER_ID"/>
+            <define name="GREEN_FOLLOWER_VISUAL_DETECTION_ID" value="GREEN_DETECTION_ID"/>
         </module>
         <module name="video_rtp_stream">
             <define name="VIEWVIDEO_CAMERA" value="front_camera"/>

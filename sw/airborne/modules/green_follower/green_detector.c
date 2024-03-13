@@ -105,7 +105,7 @@ void green_detector_init(void) {
         gd_cr_max = GREEN_DETECTOR_CR_MAX;
     #endif
 
-    cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
+     cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
 }
 
 void green_detector_periodic(void) {
@@ -179,14 +179,16 @@ float get_radial(struct image_t *img, float angle, uint8_t radius) {
         y = (uint16_t)((double)img->h/2 + i * cos(angle));
         x = (uint16_t)(i * sin(angle));
         if (buffer[y * 2 * img->w + 2 * x + 1] == 255) {
-            sum++;
+          sum += 5;
+        } else {
+          sum--;
         }
     }
 
     return (float)sum; // * (sin(angle) + 0.2) ;
 }
 
-void get_direction(struct image_t *img, int resolution, float* best_heading, float* safe_length) {
+void get_direction(struct image_t *img, int resolution, float *best_heading, float *safe_length) {
 
     float step_size = M_PI / (float)resolution;
     *best_heading = 0;
@@ -199,14 +201,14 @@ void get_direction(struct image_t *img, int resolution, float* best_heading, flo
     for (float angle = 0.001; angle < M_PI; angle += step_size) {
         float radial = get_radial(img, angle, img->w);
 
-        if (counter+1 > number_steps_average){
+        if (counter + 1 > number_steps_average){
             // Move elements one position up and discard the first element
             for (int i = 0; i < number_steps_average-2; ++i){
                 radial_memory[i] = radial_memory[i+1];
             }
             // Store value in the last position
             radial_memory[number_steps_average - 1] = radial;
-        }else{
+        } else {
             // Store value in the current position
             radial_memory[counter] = radial;
         }
@@ -225,7 +227,7 @@ void get_direction(struct image_t *img, int resolution, float* best_heading, flo
             }
             //average_radial = average_radial*sin((angle_in_middle-M_PI/6)*M_PI/(5*M_PI/6-M_PI/6))/number_steps_average;
             average_radial = average_radial/number_steps_average;
-            //VERBOSE_PRINT("%f  %f  %f\n",angle_in_middle,average_radial,*safe_length);
+            // VERBOSE_PRINT("%f  %f  %f\n",angle_in_middle,average_radial,*safe_length);
             if (average_radial > *safe_length) {
                 *best_heading = angle_in_middle;
                 *safe_length = average_radial;

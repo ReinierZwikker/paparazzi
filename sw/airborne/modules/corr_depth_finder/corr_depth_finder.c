@@ -34,7 +34,7 @@
 const uint8_t amount_of_steps = 25;
 const uint8_t slice_size = 50;
 const uint8_t slice_extend = slice_size / 2;
-const float max_std = 0.02f;
+const float max_std = 0.2f;
 const bool draw = true;
 
 // Predefined evaluation location, direction and dependency on forward or sideways motion
@@ -186,6 +186,7 @@ bool eval_dependencies[207] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 const float zone_headings[5] = {-M_PI/2, -M_PI/4, 0, M_PI/4, M_PI/2};
+const float zone_amount_of_markers[5] = {29, 37, 75, 36, 30};
 
 struct image_t previous_image;
 struct image_t previous_slice, current_slice;
@@ -203,7 +204,7 @@ struct heading_object_t {
     float safe_length;
     bool updated;
 };
-struct heading_object_t global_heading_object;
+struct heading_object_t global_corr_heading_object;
 
 /*
  * depth_finder_detector
@@ -228,8 +229,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
     memset(&correlations, 0.0f, amount_of_steps * sizeof(float));
     mean = std = 0.0f;
 
-    previous_slice_center.x = x_eval_locations[slice_i];
-    previous_slice_center.y = y_eval_locations[slice_i];
+    previous_slice_center.y = x_eval_locations[slice_i];
+    previous_slice_center.x = y_eval_locations[slice_i];
 
     // Get previous slice from previous image around the slice center
     image_window(&previous_image, &previous_slice, &previous_slice_center);
@@ -238,8 +239,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 
     for (uint8_t step_i = 0; step_i < amount_of_steps; step_i++) {
       // TODO check if correct
-      current_slice_center.x = previous_slice_center.x + (uint32_t)(step_i * x_eval_directions[slice_i]);
-      current_slice_center.y = previous_slice_center.y + (uint32_t)(step_i * y_eval_directions[slice_i]);
+      current_slice_center.y = previous_slice_center.y + (uint32_t)(step_i * x_eval_directions[slice_i]);
+      current_slice_center.x = previous_slice_center.x + (uint32_t)(step_i * y_eval_directions[slice_i]);
 
       // Bounds checking
       if ((int32_t) current_slice_center.x - (int32_t) slice_extend > 0                                &&
@@ -328,15 +329,17 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 
     uint8_t min_zone_i = 0;
     for (uint8_t zone_i = 0; zone_i < 5; zone_i++) {
+      zone_busyness[zone_i] /= zone_amount_of_markers[zone_i];
       if (zone_busyness[zone_i] < zone_busyness[min_zone_i]) {
         min_zone_i = zone_i;
       }
     }
+    VERBOSE_PRINT("Busyness: %f, %f, %f, %f, %f\n",
+                  zone_busyness[0], zone_busyness[1], zone_busyness[2], zone_busyness[3], zone_busyness[4]);
 
     pthread_mutex_lock(&mutex_heading);
-    global_heading_object.best_heading = zone_headings[min_zone_i];
-    global_heading_object.safe_length = 100;
-    global_heading_object.updated = true;
+    global_corr_heading_object.best_heading = zone_headings[min_zone_i];
+    global_corr_heading_object.updated = true;
     pthread_mutex_unlock(&mutex_heading);
   } else {
     pthread_mutex_lock(&mutex_depth);
@@ -344,8 +347,9 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
     global_depth_object.updated = true;
     pthread_mutex_unlock(&mutex_depth);
   }
-  // Possible optimisation: Only save necessary slices?
-  memcpy(&previous_image.buf, current_image_p->buf, previous_image.buf_size);
+
+
+  image_copy(current_image_p, &previous_image);
 
   return current_image_p;
 }
@@ -358,16 +362,16 @@ struct image_t *corr_depth_finder1(struct image_t *img, uint8_t camera_id __attr
 
 void corr_depth_finder_init(void) {
   memset(&global_depth_object, 0, sizeof(struct depth_object_t));
-  memset(&global_heading_object, 0, sizeof(struct heading_object_t));
+  memset(&global_corr_heading_object, 0, sizeof(struct heading_object_t));
 
   pthread_mutex_init(&mutex_heading, NULL);
   pthread_mutex_init(&mutex_depth, NULL);
 
-  image_create(&previous_image, 520, 240, IMAGE_YUV422);
+  image_create(&previous_image, 240, 520, IMAGE_YUV422);
   image_create(&previous_slice, slice_size, slice_size, IMAGE_YUV422);
   image_create(&current_slice, slice_size, slice_size, IMAGE_YUV422);
 
-  cv_add_to_device(&CORR_DEPTH_FINDER_CAMERA, corr_depth_finder1, DEPTHFINDER_FPS, 0);
+  // cv_add_to_device(&DEPTHFINDER_CAMERA, corr_depth_finder1, DEPTHFINDER_FPS, 0);
 }
 
 void corr_depth_finder_periodic(void) {
@@ -375,13 +379,13 @@ void corr_depth_finder_periodic(void) {
     static struct heading_object_t local_heading_object;
 
     pthread_mutex_lock(&mutex_heading);
-    memcpy(&local_heading_object, &global_heading_object, sizeof(struct heading_object_t));
+    memcpy(&local_heading_object, &global_corr_heading_object, sizeof(struct heading_object_t));
     pthread_mutex_unlock(&mutex_heading);
 
     if(local_heading_object.updated) {
       // TODO Implement correct ABI Message
       // AbiSendMsgCORR_DEPTH_FINDER(CORR_DEPTH_ID, local_heading_object.best_heading, local_heading_object.safe_length);
-      AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_heading_object.best_heading, local_heading_object.safe_length, 250);
+      AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_heading_object.best_heading, 1000, 10000);
       local_heading_object.updated = false;
     }
   } else {

@@ -35,7 +35,7 @@
   </header>
 
   <init fun="green_detector_init()"/>
-  <periodic fun="green_detector_periodic()" freq="50"/>
+  <periodic fun="green_detector_periodic()" freq="30"/>
   <makefile target="ap|nps">
     <file name="green_detector.c"/>
   </makefile>

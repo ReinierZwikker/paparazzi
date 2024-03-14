@@ -12,6 +12,7 @@
     <dl_settings>
       <dl_settings name="CorrDepthFinder">
         <dl_setting var="cdf_max_std" min="0" step="0.0001" max="0.05" shortname="max_std"/>
+        <dl_setting var="cdf_threshold" min="0" step="0.1" max="2.5" shortname="threshold"/>
       </dl_settings>
     </dl_settings>
   </settings>

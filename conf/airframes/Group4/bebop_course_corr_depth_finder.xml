@@ -50,6 +50,7 @@
         </module>
         <module name="green_follower">
             <define name="GREEN_FOLLOWER_VISUAL_DETECTION_ID" value="GREEN_DETECTION_ID"/>
+            <define name="CORR_DEPTH_FINDER_VISUAL_DETECTION_ID" value="CORR_DEPTH_ID"/>
         </module>
         <module name="video_rtp_stream">
             <define name="VIEWVIDEO_CAMERA" value="front_camera"/>

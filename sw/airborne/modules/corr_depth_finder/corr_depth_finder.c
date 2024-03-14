@@ -36,8 +36,8 @@ const uint8_t slice_size = 50;
 const uint8_t slice_extend = slice_size / 2;
 const bool draw = true;
 
-float cdf_max_std = 0.2f;
-
+float cdf_max_std;
+float cdf_threshold;
 // Predefined evaluation location, direction and dependency on forward or sideways motion
 
 // x-components of location in pixels
@@ -294,8 +294,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
     // Only consider this slice if the standard deviation is "high enough" ™
     if (std > cdf_max_std) {
       // Argmax of the correlations at the current eval location
-      uint8_t max_i = 1;
-      for (uint8_t step_i = 0; step_i < amount_of_steps; step_i++) {
+      uint8_t max_i = 0;
+      for (uint8_t step_i = 1; step_i < amount_of_steps; step_i++) {
         if (correlations[step_i] > correlations[max_i]) {
           max_i = step_i;
         }
@@ -338,12 +338,18 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
     uint8_t min_zone_i = 0;
     for (uint8_t zone_i = 0; zone_i < 5; zone_i++) {
       zone_busyness[zone_i] /= zone_amount_of_markers[zone_i];
+      // Only select zone if "significantly better" ™
       if (zone_busyness[zone_i] < zone_busyness[min_zone_i]) {
         min_zone_i = zone_i;
       }
     }
-    VERBOSE_PRINT("Busyness: %f, %f, %f, %f, %f\n",
-                  zone_busyness[0], zone_busyness[1], zone_busyness[2], zone_busyness[3], zone_busyness[4]);
+    if (zone_busyness[0] + zone_busyness[1] + zone_busyness[2] + zone_busyness[3] + zone_busyness[4] < cdf_threshold) {
+      min_zone_i = 2;
+    }
+
+    VERBOSE_PRINT("Busyness: %f, %f, %f, %f, %f\nSelected zone: %d, Angle: %f",
+                  zone_busyness[0], zone_busyness[1], zone_busyness[2], zone_busyness[3], zone_busyness[4],
+                  min_zone_i, zone_headings[min_zone_i]);
 
     pthread_mutex_lock(&mutex_heading);
     global_corr_heading_object.best_heading = zone_headings[min_zone_i];
@@ -370,7 +376,8 @@ struct image_t *corr_depth_finder1(struct image_t *img, uint8_t camera_id __attr
 
 void corr_depth_finder_init(void) {
 
-  cdf_max_std = 0.005;
+  cdf_max_std = 0.008;
+  cdf_threshold = 0.075f;
 
   memset(&global_depth_object, 0, sizeof(struct depth_object_t));
   memset(&global_corr_heading_object, 0, sizeof(struct heading_object_t));
@@ -382,7 +389,7 @@ void corr_depth_finder_init(void) {
   image_create(&previous_slice, slice_size, slice_size, IMAGE_YUV422);
   image_create(&current_slice, slice_size, slice_size, IMAGE_YUV422);
 
-   cv_add_to_device(&DEPTHFINDER_CAMERA, corr_depth_finder1, DEPTHFINDER_FPS, 0);
+  cv_add_to_device(&DEPTHFINDER_CAMERA, corr_depth_finder1, DEPTHFINDER_FPS, 0);
 }
 
 void corr_depth_finder_periodic(void) {
@@ -395,8 +402,8 @@ void corr_depth_finder_periodic(void) {
 
     if(local_heading_object.updated) {
       // TODO Implement correct ABI Message
-      // AbiSendMsgCORR_DEPTH_FINDER(CORR_DEPTH_ID, local_heading_object.best_heading, local_heading_object.safe_length);
-      AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_heading_object.best_heading, 1000, 10000);
+      AbiSendMsgDEPTH_FINDER_HEADING(CORR_DEPTH_ID, local_heading_object.best_heading);
+      // AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_heading_object.best_heading, 1000, 10000);
       local_heading_object.updated = false;
     }
   } else {

@@ -254,6 +254,9 @@
       <field name="green_pixels" type="uint32_t">Amount of green pixels in the image</field>
     </message>
 
+    <message name="DEPTH_FINDER_HEADING" id="38">
+      <field name="best_heading" type="float">Best relative heading</field>
+    </message>
   </msg_class>
 
 </protocol>

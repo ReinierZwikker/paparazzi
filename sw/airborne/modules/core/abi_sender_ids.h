@@ -644,4 +644,8 @@
 #define GREEN_DETECTION_ID 37 // Approach Moving Target
 #endif
 
+#ifndef CORR_DEPTH_ID
+#define CORR_DEPTH_ID 38 // Approach Moving Target
+#endif
+
 #endif /* ABI_SENDER_IDS_H */

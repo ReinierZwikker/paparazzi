@@ -32,10 +32,14 @@
 extern bool video_capture_take_shot;
 extern bool video_capture_record_video;
 
+// Module structures
+struct image_t *img;
+
 // Module functions
 extern void video_capture_init(void);
 extern void video_capture_shoot(void); // Capture single image
 extern void video_capture_start_capture(void); // Start video capture
 extern void video_capture_stop_capture(void); // Stop video capture
+extern void video_capture_save(struct image_t *img); // Save current image
 
 #endif /* VIDEO_CAPTURE_H_ */

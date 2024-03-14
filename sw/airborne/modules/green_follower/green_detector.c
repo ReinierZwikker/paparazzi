@@ -1,5 +1,6 @@
 #include "modules/green_follower/green_detector.h"
 #include "modules/computer_vision/cv.h"
+#include "modules/computer_vision/video_caputure.h"
 #include "modules/core/abi.h"
 #include "std.h"
 
@@ -56,6 +57,8 @@ void get_direction(struct image_t *img, int resolution, float* best_heading, flo
  */
 static struct image_t *green_heading_finder(struct image_t *img)
 {
+    video_capture_save(struct image_t *img); // Save image before thresholds are taken
+
     uint8_t lum_min, lum_max;
     uint8_t cb_min, cb_max;
     uint8_t cr_min, cr_max;

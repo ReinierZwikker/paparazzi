@@ -34,8 +34,9 @@
 const uint8_t amount_of_steps = 25;
 const uint8_t slice_size = 50;
 const uint8_t slice_extend = slice_size / 2;
-const float max_std = 0.2f;
 const bool draw = true;
+
+float cdf_max_std = 0.2f;
 
 // Predefined evaluation location, direction and dependency on forward or sideways motion
 
@@ -214,6 +215,7 @@ struct heading_object_t global_corr_heading_object;
 static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 {
   struct depth_object_t local_depth_object;
+  memset(&local_depth_object.depth, 0.0f, 207 * sizeof(float));
 
   float correlations[amount_of_steps];
   float mean, std;
@@ -273,6 +275,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
                                     (float) previous_buf[uv_location];
           }
         }
+        // Change range to 0...1 instead of 0...(2*50*50*255*255)
+        correlations[step_i] /= 325125000.0f;
 
         mean += correlations[step_i];
       }
@@ -285,10 +289,12 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
     }
     std = sqrtf(std / (float) amount_of_steps);
 
+    // VERBOSE_PRINT("mean: %f \t\t\t| std: %f > %f\n", mean, std, cdf_max_std);
+
     // Only consider this slice if the standard deviation is "high enough" ™
-    if (std > max_std) {
+    if (std > cdf_max_std) {
       // Argmax of the correlations at the current eval location
-      uint8_t max_i = 0;
+      uint8_t max_i = 1;
       for (uint8_t step_i = 0; step_i < amount_of_steps; step_i++) {
         if (correlations[step_i] > correlations[max_i]) {
           max_i = step_i;
@@ -325,6 +331,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
       }
 
       zone_busyness[zone_selection] += local_depth_object.depth[slice_i];
+      // VERBOSE_PRINT("%d: busyness += %f = %f\n", zone_selection, local_depth_object.depth[slice_i], zone_busyness[zone_selection]);
+
     }
 
     uint8_t min_zone_i = 0;
@@ -361,6 +369,9 @@ struct image_t *corr_depth_finder1(struct image_t *img, uint8_t camera_id __attr
 }
 
 void corr_depth_finder_init(void) {
+
+  cdf_max_std = 0.005;
+
   memset(&global_depth_object, 0, sizeof(struct depth_object_t));
   memset(&global_corr_heading_object, 0, sizeof(struct heading_object_t));
 
@@ -371,7 +382,7 @@ void corr_depth_finder_init(void) {
   image_create(&previous_slice, slice_size, slice_size, IMAGE_YUV422);
   image_create(&current_slice, slice_size, slice_size, IMAGE_YUV422);
 
-  // cv_add_to_device(&DEPTHFINDER_CAMERA, corr_depth_finder1, DEPTHFINDER_FPS, 0);
+   cv_add_to_device(&DEPTHFINDER_CAMERA, corr_depth_finder1, DEPTHFINDER_FPS, 0);
 }
 
 void corr_depth_finder_periodic(void) {

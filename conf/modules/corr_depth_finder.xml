@@ -8,12 +8,13 @@
     <define name="HEADING_MODE" value="true" description="If true, uses the best heading to navigate, otherwise uses WIP"/>
   </doc>
 
-<!--  <settings>-->
-<!--    <dl_settings>-->
-<!--      <dl_settings name="GreenDetector">-->
-<!--      </dl_settings>-->
-<!--    </dl_settings>-->
-<!--  </settings>-->
+  <settings>
+    <dl_settings>
+      <dl_settings name="CorrDepthFinder">
+        <dl_setting var="cdf_max_std" min="0" step="0.0001" max="0.05" shortname="max_std"/>
+      </dl_settings>
+    </dl_settings>
+  </settings>
 
   <dep>
     <depends>video_thread</depends>

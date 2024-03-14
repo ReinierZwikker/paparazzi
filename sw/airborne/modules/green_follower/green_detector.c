@@ -1,6 +1,6 @@
 #include "modules/green_follower/green_detector.h"
 #include "modules/computer_vision/cv.h"
-#include "modules/computer_vision/video_caputure.h"
+#include "modules/computer_vision/video_capture.h"
 #include "modules/core/abi.h"
 #include "std.h"
 

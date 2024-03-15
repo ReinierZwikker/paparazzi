@@ -38,6 +38,7 @@
 // define settings
 float gf_set_speed = 0.4f;           // max flight speed [m/s]
 float gf_floor_count_frac = 0.01f;  // percentage of the image that needs to be green before turning around
+float gf_sideways_speed_factor = 0.1f;  // Oversteer correction
 
 // define and initialise global variables
 float current_best_heading_green = 0.0f;              // heading with the longest available floor space in [rad], where 0 is ahead, positive is right
@@ -111,14 +112,16 @@ void green_follower_periodic(void)
 
         //VERBOSE_PRINT("GF: Moving from %f towards %f (d=%f) at %f\n", stateGetNedToBodyEulers_f()->psi, stateGetNedToBodyEulers_f()->psi + current_best_heading_green, current_best_heading_green, speed_sp);
 
-        guidance_h_set_body_vel(speed_sp, 0);
-        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + 2 * current_best_heading_green + current_best_heading_corr);
-    } else {
-        //VERBOSE_PRINT("GF: ESCAPING! Floor threshold: %d / %d\n", current_green_pixels, floor_count_threshold);
+      float heading_sp = 2 * current_best_heading_green + current_best_heading_corr;
 
-        guidance_h_set_body_vel(-0.2f, 0);
-        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + M_PI/4);
-        //waiting_cycles = 4;
+      guidance_h_set_body_vel(speed_sp, gf_sideways_speed_factor * heading_sp);
+      guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
+    } else {
+      //VERBOSE_PRINT("GF: ESCAPING! Floor threshold: %d / %d\n", current_green_pixels, floor_count_threshold);
+
+      guidance_h_set_body_vel(-0.2f, 0);
+      guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + M_PI/4);
+      //waiting_cycles = 4;
     }
 
     return;

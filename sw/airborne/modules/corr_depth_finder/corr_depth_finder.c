@@ -377,7 +377,7 @@ struct image_t *corr_depth_finder1(struct image_t *img, uint8_t camera_id __attr
 void corr_depth_finder_init(void) {
 
   cdf_max_std = 0.008;
-  cdf_threshold = 0.075f;
+  cdf_threshold = 0.4f;
 
   memset(&global_depth_object, 0, sizeof(struct depth_object_t));
   memset(&global_corr_heading_object, 0, sizeof(struct heading_object_t));

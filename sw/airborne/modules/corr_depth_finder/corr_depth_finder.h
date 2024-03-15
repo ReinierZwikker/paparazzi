@@ -5,6 +5,9 @@
 #ifndef PAPARAZZI_GROUP_4_CORR_DEPTH_FINDER_H
 #define PAPARAZZI_GROUP_4_CORR_DEPTH_FINDER_H
 
+extern float cdf_max_std;
+extern float cdf_threshold;
+
 extern void corr_depth_finder_init(void);
 extern void corr_depth_finder_periodic(void);
 

@@ -21,6 +21,8 @@
 
 // settings
 extern float gf_set_speed;        // max flight speed [m/s]
+extern float gf_floor_count_frac; // Ground fraction before turning
+extern float gf_sideways_speed_factor; // Oversteer correction
 
 extern void green_follower_init(void);
 extern void green_follower_periodic(void);

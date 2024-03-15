@@ -108,7 +108,7 @@ void green_detector_init(void) {
         gd_cr_max = GREEN_DETECTOR_CR_MAX;
     #endif
 
-     cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
+    cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
 }
 
 void green_detector_periodic(void) {

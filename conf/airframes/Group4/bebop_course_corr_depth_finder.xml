@@ -44,12 +44,16 @@
         </module>
         <module name="corr_depth_finder">
             <define name="DEPTHFINDER_CAMERA" value="front_camera"/>
-            <define name="GREENFILTER_CAMERA" value="front_camera"/>
             <define name="DEPTHFINDER_FPS" value="0"/>
             <define name="HEADING_MODE" value="true"/>
         </module>
+        <module name="green_detector">
+            <define name="GREENFILTER_CAMERA" value="front_camera"/>
+            <define name="GREENFILTER_FPS" value="0"/>
+        </module>
         <module name="green_follower">
             <define name="GREEN_FOLLOWER_VISUAL_DETECTION_ID" value="GREEN_DETECTION_ID"/>
+            <define name="CORR_DEPTH_FINDER_VISUAL_DETECTION_ID" value="CORR_DEPTH_ID"/>
         </module>
         <module name="video_rtp_stream">
             <define name="VIEWVIDEO_CAMERA" value="front_camera"/>

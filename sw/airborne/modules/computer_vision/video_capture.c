@@ -153,3 +153,46 @@ void video_capture_save(struct image_t *img)
   // Free image
   image_free(&img_jpeg);
 }
+
+void video_capture_save_at_dir(struct image_t *img)
+{
+  // Create output folder if necessary
+  if (access(save_dir, F_OK)) {
+    char save_dir_cmd[266]; // write 10b + [0:256]
+    sprintf(save_dir_cmd, "mkdir -p %s", save_dir);
+    if (system(save_dir_cmd) != 0) {
+      printf("[video_capture] Could not create images directory %s.\n", save_dir);
+      return;
+    }
+  }
+
+  // Declare storage for image location
+  char save_name[266]; // write 10b + [0-256]
+
+  // Generate image filename from image timestamp
+  sprintf(save_name, "%s/pg_%u.jpg", save_dir, img->pprz_ts);
+  printf("[video_capture] Saving image to %s.\n", save_name);
+
+  // Create jpg image from raw frame
+  struct image_t img_jpeg;
+  image_create(&img_jpeg, img->w, img->h, IMAGE_JPEG);
+  jpeg_encode_image(img, &img_jpeg, VIDEO_CAPTURE_JPEG_QUALITY, true);
+
+#if JPEG_WITH_EXIF_HEADER
+  write_exif_jpeg(save_name, img_jpeg.buf, img_jpeg.buf_size, img_jpeg.w, img_jpeg.h);
+#else
+  // Open file
+  FILE *fp = fopen(save_name, "w");
+  if (fp == NULL) {
+    printf("[video_capture] Could not write shot %s.\n", save_name);
+    return;
+  }
+
+  // Save it to the file and close it
+  fwrite(img_jpeg.buf, sizeof(uint8_t), img_jpeg.buf_size, fp);
+  fclose(fp);
+#endif
+
+  // Free image
+  image_free(&img_jpeg);
+}

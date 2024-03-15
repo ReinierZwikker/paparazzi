@@ -41,6 +41,6 @@ extern void video_capture_init(void);
 extern void video_capture_shoot(void); // Capture single image
 extern void video_capture_start_capture(void); // Start video capture
 extern void video_capture_stop_capture(void); // Stop video capture
-extern void video_capture_save(struct image_t *img); // Save current image
+extern void video_capture_save_at_dir(struct image_t *img); // Save current image
 
 #endif /* VIDEO_CAPTURE_H_ */

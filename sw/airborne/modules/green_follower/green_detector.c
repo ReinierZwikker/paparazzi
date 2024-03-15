@@ -57,7 +57,7 @@ void get_direction(struct image_t *img, int resolution, float* best_heading, flo
  */
 static struct image_t *green_heading_finder(struct image_t *img)
 {
-    video_capture_save(img); // Save image before thresholds are taken
+    video_capture_save_at_dir(img); // Save image before thresholds are taken
 
     uint8_t lum_min, lum_max;
     uint8_t cb_min, cb_max;

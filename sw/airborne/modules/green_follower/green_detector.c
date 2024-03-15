@@ -25,11 +25,11 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 
 // Filter Settings
 uint8_t gd_lum_min = 60;
-uint8_t gd_lum_max = 110;
-uint8_t gd_cb_min = 75;
-uint8_t gd_cr_min = 110;
-uint8_t gd_cb_max = 110;
-uint8_t gd_cr_max = 130;
+uint8_t gd_lum_max = 140;
+uint8_t gd_cb_min = 24;
+uint8_t gd_cr_min = 100;
+uint8_t gd_cb_max = 28;
+uint8_t gd_cr_max = 160;
 
 static pthread_mutex_t mutex;
 

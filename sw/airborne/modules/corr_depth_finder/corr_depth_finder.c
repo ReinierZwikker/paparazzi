@@ -31,8 +31,8 @@
 #endif
 
 // SETTINGS
-const uint8_t amount_of_steps = 25;
-const uint8_t slice_size = 50;
+const uint8_t amount_of_steps = 15;
+const uint8_t slice_size = 20;
 const uint8_t slice_extend = slice_size / 2;
 const bool draw = true;
 
@@ -214,6 +214,9 @@ struct heading_object_t global_corr_heading_object;
  */
 static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 {
+  //time_t start_time;
+  //start_time = time(NULL);
+
   struct depth_object_t local_depth_object;
   memset(&local_depth_object.depth, 0.0f, 207 * sizeof(float));
 
@@ -364,6 +367,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 
 
   image_copy(current_image_p, &previous_image);
+
+  //VERBOSE_PRINT("Correlation time: %f\n", start_time - time(NULL));
 
   return current_image_p;
 }

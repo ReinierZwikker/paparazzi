@@ -36,9 +36,8 @@
 #endif
 
 // define settings
-//float gf_floor_count_frac = 0.05f; // floor detection threshold as a fraction of total of image
 float gf_set_speed = 0.4f;           // max flight speed [m/s]
-float oag_floor_count_frac = 0.01f;  // percentage of the image that needs to be green before turning around
+float gf_floor_count_frac = 0.01f;  // percentage of the image that needs to be green before turning around
 
 // define and initialise global variables
 float current_best_heading_green = 0.0f;              // heading with the longest available floor space in [rad], where 0 is ahead, positive is right
@@ -82,7 +81,6 @@ void green_follower_init(void)
     // bind our green_detector callbacks to receive the heading outputs
     AbiBindMsgGREEN_DETECTION(GREEN_FOLLOWER_VISUAL_DETECTION_ID, &green_detection_ev, green_detection_cb);
     AbiBindMsgDEPTH_FINDER_HEADING(CORR_DEPTH_FINDER_VISUAL_DETECTION_ID, &corr_depth_ev, corr_depth_cb);
-    
 }
 
 /*
@@ -91,7 +89,7 @@ void green_follower_init(void)
 void green_follower_periodic(void)
 {
 
-    uint32_t floor_count_threshold = (uint32_t) (oag_floor_count_frac * 520.0 * 240.0);
+    uint32_t floor_count_threshold = (uint32_t) (gf_floor_count_frac * 520.0 * 240.0);
 
     // Only run the module if we are in the correct flight mode
     if (guidance_h.mode != GUIDANCE_H_MODE_GUIDED) {

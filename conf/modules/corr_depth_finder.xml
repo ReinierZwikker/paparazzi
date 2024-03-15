@@ -26,7 +26,7 @@
   </header>
 
   <init fun="corr_depth_finder_init()"/>
-  <periodic fun="corr_depth_finder_periodic()" freq="10"/>
+  <periodic fun="corr_depth_finder_periodic()" freq="30"/>
   <makefile target="ap|nps">
     <file name="corr_depth_finder.c"/>
   </makefile>

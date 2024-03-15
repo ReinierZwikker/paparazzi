@@ -21,7 +21,7 @@ TODO
     <file name="green_follower.h"/>
   </header>
   <init fun="green_follower_init()"/>
-  <periodic fun="green_follower_periodic()" freq="15"/>
+  <periodic fun="green_follower_periodic()" freq="30"/>
   <makefile target="ap|nps">
     <file name="green_follower.c"/>
   </makefile>

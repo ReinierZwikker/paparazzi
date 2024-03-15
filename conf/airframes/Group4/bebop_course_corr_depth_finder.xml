@@ -44,7 +44,7 @@
         </module>
         <module name="corr_depth_finder">
             <define name="DEPTHFINDER_CAMERA" value="front_camera"/>
-            <define name="DEPTHFINDER_FPS" value="0"/>
+            <define name="DEPTHFINDER_FPS" value="10"/>
             <define name="HEADING_MODE" value="true"/>
         </module>
         <module name="green_detector">

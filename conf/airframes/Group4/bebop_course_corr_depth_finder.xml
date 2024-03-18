@@ -18,6 +18,7 @@
 
         <!-- Subsystem section -->
         <module name="telemetry" type="transparent_udp"/>
+        <module name="sys_mon"/>
         <module name="radio_control" type="datalink"/>
         <module name="motor_mixing"/>
         <module name="actuators" type="bebop"/>
@@ -44,7 +45,7 @@
         </module>
         <module name="corr_depth_finder">
             <define name="DEPTHFINDER_CAMERA" value="front_camera"/>
-            <define name="DEPTHFINDER_FPS" value="10"/>
+            <define name="DEPTHFINDER_FPS" value="5"/>
             <define name="HEADING_MODE" value="true"/>
         </module>
         <module name="green_detector">

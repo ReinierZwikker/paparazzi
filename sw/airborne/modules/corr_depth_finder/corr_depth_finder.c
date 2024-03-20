@@ -186,7 +186,7 @@ bool eval_dependencies[207] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
                           1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-const float zone_headings[5] = {-M_PI/8, -M_PI/16, 0, M_PI/16, M_PI/8};
+const float zone_headings[5] = {-M_PI/4, -M_PI/16, 0, M_PI/16, M_PI/4};
 const float zone_amount_of_markers[5] = {29, 37, 75, 36, 30};
 
 struct image_t previous_image;

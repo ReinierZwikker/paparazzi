@@ -114,10 +114,10 @@ static struct image_t *green_heading_finder(struct image_t *img)
     global_heading_object.safe_length = safe_length;
     global_heading_object.green_pixels = green_pixels;
     global_heading_object.updated = true;
-    pthread_mutex_unlock(&mutex);
 
     clock_t end = clock();
     global_heading_object.cycle_time = (end - start);
+    pthread_mutex_unlock(&mutex);
 
     return img;
 }

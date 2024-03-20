@@ -77,6 +77,34 @@
       </program>
       <program name="Gazebo"/>
     </session>
+    <session name="Simulation - Gazebo + Cam">
+      <program name="Simulator">
+        <arg flag="-a" constant="bebop_corr"/>
+        <arg flag="-t" constant="nps"/>
+      </program>
+      <program name="Data Link">
+        <arg flag="-udp"/>
+        <arg flag="-ping_period" constant="100"/>
+      </program>
+      <program name="Server">
+        <arg flag="-n"/>
+      </program>
+      <program name="GCS">
+        <arg flag="-speech"/>
+        <arg flag="-maximize"/>
+        <arg flag="-center_ac"/>
+        <arg flag="-mercator"/>
+        <arg flag="-maps_no_http"/>
+        <arg flag="-track_size" constant="200"/>
+        <arg flag="-zoom" constant="40."/>
+      </program>
+      <program name="Gazebo"/>
+      <program name="RtpViewer">
+        <arg flag="-p" constant="5000"/>
+        <arg flag="-s" constant="0.75"/>
+        <arg flag="-r" constant="3"/>
+      </program>
+    </session>
     <session name="Simulation - Gazebo + Joystick">
       <program name="Simulator">
         <arg flag="-a" constant="@AIRCRAFT"/>
@@ -105,33 +133,22 @@
       </program>
       <program name="Gazebo"/>
     </session>
-    <session name="Simulation - Gazebo + Cam">
-      <program name="Simulator">
-        <arg flag="-a" constant="bebop_corr"/>
-        <arg flag="-t" constant="nps"/>
-      </program>
+    <session name="Flight UDP - Messages">
       <program name="Data Link">
         <arg flag="-udp"/>
-        <arg flag="-ping_period" constant="100"/>
       </program>
-      <program name="Server">
-        <arg flag="-n"/>
-      </program>
+      <program name="Server"/>
       <program name="GCS">
         <arg flag="-speech"/>
-        <arg flag="-maximize"/>
-        <arg flag="-center_ac"/>
-        <arg flag="-mercator"/>
-        <arg flag="-maps_no_http"/>
-        <arg flag="-track_size" constant="200"/>
-        <arg flag="-zoom" constant="40."/>
       </program>
-      <program name="Gazebo"/>
+      <program name="Messages"/>
       <program name="RtpViewer">
         <arg flag="-p" constant="5000"/>
         <arg flag="-s" constant="0.75"/>
         <arg flag="-r" constant="3"/>
       </program>
+      <program name="Real-time Plotter (Python)"/>
+      <program name="Real-time Plotter (Python)"/>
     </session>
   </section>
 </control_panel>

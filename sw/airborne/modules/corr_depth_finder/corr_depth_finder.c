@@ -31,7 +31,7 @@
 #endif
 
 // SETTINGS
-const uint8_t amount_of_steps = 25;
+const uint8_t amount_of_steps = 15;
 const uint8_t slice_size = 20;
 const uint8_t slice_extend = slice_size / 2;
 const bool draw = true;
@@ -186,7 +186,7 @@ bool eval_dependencies[207] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
                           1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-const float zone_headings[5] = {-M_PI/2, -M_PI/4, 0, M_PI/4, M_PI/2};
+const float zone_headings[5] = {-M_PI/8, -M_PI/16, 0, M_PI/16, M_PI/8};
 const float zone_amount_of_markers[5] = {29, 37, 75, 36, 30};
 
 struct image_t previous_image;
@@ -248,7 +248,7 @@ static void send_corr_depth_finder(struct transport_tx *trans, struct link_devic
 static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 {
   //time_t start_time;
-  //start_time = time(NULL);
+  clock_t start = clock();
 
   struct depth_object_t local_depth_object;
   memset(&local_depth_object.depth, 0.0f, 207 * sizeof(float));
@@ -265,8 +265,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
     memset(&correlations, 0.0f, amount_of_steps * sizeof(float));
     mean = std = 0.0f;
 
-    previous_slice.y_center = x_eval_locations[slice_i];
     previous_slice.x_center = y_eval_locations[slice_i];
+    previous_slice.y_center = x_eval_locations[slice_i];
 
     previous_slice.x_origin = previous_slice.x_center - (int16_t) slice_extend;
     previous_slice.y_origin = previous_slice.y_center - (int16_t) slice_extend;
@@ -277,8 +277,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 
     for (uint8_t step_i = 0; step_i < amount_of_steps; step_i++) {
       // TODO check if correct
-      current_slice.y_center = previous_slice.y_center + (uint32_t)(step_i * x_eval_directions[slice_i]);
       current_slice.x_center = previous_slice.x_center + (uint32_t)(step_i * y_eval_directions[slice_i]);
+      current_slice.y_center = previous_slice.y_center + (uint32_t)(step_i * x_eval_directions[slice_i]);
 
       current_slice.x_origin = current_slice.x_center - (int16_t) slice_extend;
       current_slice.y_origin = current_slice.y_center - (int16_t) slice_extend;
@@ -289,8 +289,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 
       // Bounds checking
       if (current_slice.x_origin > 0                                &&
-          current_slice.y_origin < (int16_t) current_image_p->w - 1 &&
-          current_slice.x_max    > 0                                &&
+          current_slice.x_max    < (int16_t) current_image_p->w - 1 &&
+          current_slice.y_origin > 0                                &&
           current_slice.y_max    < (int16_t) current_image_p->h)
       {
         // Shift color to correct for U and V unevenness
@@ -412,6 +412,11 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
   image_copy(current_image_p, &previous_image);
 
   // VERBOSE_PRINT("Correlation time: %f\n", start_time - time(NULL));
+
+  pthread_mutex_lock(&mutex_heading);
+  clock_t end = clock();
+  global_corr_heading_object.cycle_time = (end - start);
+  pthread_mutex_unlock(&mutex_heading);
 
   return current_image_p;
 }

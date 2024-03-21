@@ -62,6 +62,11 @@ ifneq ($(MAKECMDGOALS),clean)
   $(TARGET).CFLAGS += -DPPRZ_VER_MAJOR=$(PPRZ_VER_MAJOR)
   $(TARGET).CFLAGS += -DPPRZ_VER_MINOR=$(PPRZ_VER_MINOR)
   $(TARGET).CFLAGS += -DPPRZ_VER_PATCH=$(PPRZ_VER_PATCH)
+  # SIMD Flags
+  ifeq ($(TARGET), ap)
+    $(TARGET).CFLAGS += -mfpu=neon-vfpv3
+    # -DSIMD_ENABLED = TRUE
+  endif
   ifdef PRINT_CONFIG
     $(TARGET).CFLAGS += -DPRINT_CONFIG
   endif

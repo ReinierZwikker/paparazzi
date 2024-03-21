@@ -10,6 +10,10 @@
 #include <math.h>
 #include "pthread.h"
 
+#define SIMD_ENABLED FALSE
+
+//#include "arm_neon.h"
+
 #ifndef GREENFILTER_FPS
 #define GREENFILTER_FPS 0       ///< Default FPS (zero means run at camera fps)
 #endif
@@ -23,6 +27,7 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 #else
 #define VERBOSE_PRINT(...)
 #endif
+
 
 // TODO Make auto-select based on build target
 #define CYBERZOO_FILTER FALSE
@@ -63,6 +68,13 @@ void apply_threshold(struct image_t *img, uint32_t *green_pixels,
 float get_radial(struct image_t *img, float angle, uint8_t radius);
 
 void get_direction(struct image_t *img, int resolution, float* best_heading, float* safe_length);
+
+//void simd_test(void) {
+//  uint8x8_t a = {1, 2, 3, 4, 5, 6, 7, 8};
+//  uint8x8_t b = {9, 10, 11, 12, 13, 14, 15, 16};
+//  uint8x8_t c = vadd_u8(a, b);
+//  VERBOSE_PRINT("simd: %i\n", c[0]);
+//}
 
 // Create telemetry message
 static void send_green_follower(struct transport_tx *trans, struct link_device *dev) {
@@ -134,16 +146,24 @@ void green_detector_init(void) {
     memset(&global_heading_object, 0, sizeof(struct heading_object_t));
     pthread_mutex_init(&mutex, NULL);
 
-    #ifdef GREEN_DETECTOR_LUM_MIN
+  #ifdef GREEN_DETECTOR_LUM_MIN
         gd_lum_min = GREEN_DETECTOR_LUM_MIN;
         gd_lum_max = GREEN_DETECTOR_LUM_MAX;
         gd_cb_min = GREEN_DETECTOR_CB_MIN;
         gd_cb_max = GREEN_DETECTOR_CB_MAX;
         gd_cr_min = GREEN_DETECTOR_CR_MIN;
         gd_cr_max = GREEN_DETECTOR_CR_MAX;
-    #endif
+  #endif
 
     cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
+
+//    simd_test();
+
+  #if SIMD_ENABLED == TRUE
+    VERBOSE_PRINT("SIMD possible");
+  #else
+    VERBOSE_PRINT("SIMD impossible");
+  #endif
 }
 
 void green_detector_periodic(void) {

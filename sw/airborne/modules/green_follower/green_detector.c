@@ -2,6 +2,7 @@
 #include "modules/computer_vision/video_capture.h"
 #include "modules/computer_vision/cv.h"
 #include "modules/core/abi.h"
+#include "modules/datalink/telemetry.h"
 #include "std.h"
 
 #include <stdio.h>
@@ -23,13 +24,25 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 #define VERBOSE_PRINT(...)
 #endif
 
-// Filter Settings
+// TODO Make auto-select based on build target
+#define CYBERZOO_FILTER FALSE
+#if CYBERZOO_FILTER
+// Filter Settings CYBERZOO
 uint8_t gd_lum_min = 60;
 uint8_t gd_lum_max = 140;
 uint8_t gd_cb_min = 24;
 uint8_t gd_cr_min = 100;
 uint8_t gd_cb_max = 28;
 uint8_t gd_cr_max = 160;
+#else
+// Filter Settings NPS/GAZEBO
+uint8_t gd_lum_min = 60;
+uint8_t gd_lum_max = 130;
+uint8_t gd_cb_min = 75;
+uint8_t gd_cr_min = 110;
+uint8_t gd_cb_max = 120;
+uint8_t gd_cr_max = 140;
+#endif
 
 static pthread_mutex_t mutex;
 
@@ -37,6 +50,7 @@ struct heading_object_t {
     float best_heading;
     float safe_length;
     uint32_t green_pixels;
+    float cycle_time;
     bool updated;
 };
 struct heading_object_t global_heading_object;
@@ -50,6 +64,20 @@ float get_radial(struct image_t *img, float angle, uint8_t radius);
 
 void get_direction(struct image_t *img, int resolution, float* best_heading, float* safe_length);
 
+// Create telemetry message
+static void send_green_follower(struct transport_tx *trans, struct link_device *dev) {
+  static struct heading_object_t local_heading_object;
+  pthread_mutex_lock(&mutex);
+  memcpy(&local_heading_object, &global_heading_object, sizeof(struct heading_object_t));
+  pthread_mutex_unlock(&mutex);
+
+  pprz_msg_send_GREEN_FOLLOWER(trans, dev, AC_ID,
+                               &local_heading_object.best_heading,
+                               &local_heading_object.safe_length,
+                               &local_heading_object.green_pixels,
+                               &local_heading_object.cycle_time);
+}
+
 /*
  * object_detector
  * @param img - input image to process
@@ -57,7 +85,8 @@ void get_direction(struct image_t *img, int resolution, float* best_heading, flo
  */
 static struct image_t *green_heading_finder(struct image_t *img)
 {
-    video_capture_save_at_dir(img); // Save image before thresholds are taken
+    // video_capture_save_at_dir(img); // Save image before thresholds are taken
+    clock_t start = clock();
 
     uint8_t lum_min, lum_max;
     uint8_t cb_min, cb_max;
@@ -85,7 +114,11 @@ static struct image_t *green_heading_finder(struct image_t *img)
     global_heading_object.safe_length = safe_length;
     global_heading_object.green_pixels = green_pixels;
     global_heading_object.updated = true;
+
+    clock_t end = clock();
+    global_heading_object.cycle_time = (end - start);
     pthread_mutex_unlock(&mutex);
+
     return img;
 }
 
@@ -96,6 +129,8 @@ struct image_t *green_heading_finder1(struct image_t *img, uint8_t camera_id __a
 }
 
 void green_detector_init(void) {
+    register_periodic_telemetry(DefaultPeriodic, PPRZ_MSG_ID_GREEN_FOLLOWER, send_green_follower);
+
     memset(&global_heading_object, 0, sizeof(struct heading_object_t));
     pthread_mutex_init(&mutex, NULL);
 
@@ -248,7 +283,7 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
         buffer[y * 2 * img->w + 2 * x + 2] = 255;  // V
     }
     *best_heading = M_PI/2-*best_heading;
-    VERBOSE_PRINT("GF: Angle %f and length %f\n", *best_heading,*safe_length);
+    // VERBOSE_PRINT("GF: Angle %f and length %f\n", *best_heading,*safe_length);
 
 
 

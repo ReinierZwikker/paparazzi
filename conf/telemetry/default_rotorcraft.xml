@@ -37,8 +37,10 @@
       <message name="INS_EKF2"                 period=".25"/>
       <message name="WIND_INFO_RET"            period="1."/>
       <message name="AHRS_REF_QUAT"            period="0.5"/>
-      <message name="STAB_ATTITUDE"      period=".25"/>
-      <message name="EFF_MAT_G"            period="2.0"/>
+      <message name="STAB_ATTITUDE"            period=".25"/>
+      <message name="EFF_MAT_G"                period="2.0"/>
+      <message name="GREEN_FOLLOWER"           period="0.03"/>
+      <message name="CORR_DEPTH_FINDER"        period="0.03"/>
     </mode>
 
     <mode name="ppm">

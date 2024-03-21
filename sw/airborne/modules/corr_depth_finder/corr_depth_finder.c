@@ -1,4 +1,4 @@
-
+#include "modules/datalink/telemetry.h"
 #include "modules/corr_depth_finder/corr_depth_finder.h"
 
 #include "modules/computer_vision/cv.h"
@@ -186,11 +186,10 @@ bool eval_dependencies[207] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
                           1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-const float zone_headings[5] = {-M_PI/2, -M_PI/4, 0, M_PI/4, M_PI/2};
+const float zone_headings[5] = {-M_PI/4, -M_PI/16, 0, M_PI/16, M_PI/4};
 const float zone_amount_of_markers[5] = {29, 37, 75, 36, 30};
 
 struct image_t previous_image;
-struct image_t previous_slice, current_slice;
 
 static pthread_mutex_t mutex_depth, mutex_heading;
 
@@ -203,9 +202,43 @@ struct depth_object_t global_depth_object;
 struct heading_object_t {
     float best_heading;
     float safe_length;
+    float zone_busyness_ll;
+    float zone_busyness_l;
+    float zone_busyness_m;
+    float zone_busyness_r;
+    float zone_busyness_rr;
+    float cycle_time;
     bool updated;
 };
 struct heading_object_t global_corr_heading_object;
+
+
+struct slice_t {
+  int16_t x_center;
+  int16_t y_center;
+  int16_t x_origin;
+  int16_t y_origin;
+  int16_t x_max;
+  int16_t y_max;
+  uint16_t buffer_origin;
+};
+
+// Create telemetry message
+static void send_corr_depth_finder(struct transport_tx *trans, struct link_device *dev) {
+  static struct heading_object_t local_corr_heading_object;
+  pthread_mutex_lock(&mutex_heading);
+  memcpy(&local_corr_heading_object, &global_corr_heading_object, sizeof(struct heading_object_t));
+  pthread_mutex_unlock(&mutex_heading);
+
+  pprz_msg_send_CORR_DEPTH_FINDER(trans, dev, AC_ID,
+                                  &local_corr_heading_object.best_heading,
+                                  &local_corr_heading_object.zone_busyness_ll,
+                                  &local_corr_heading_object.zone_busyness_l,
+                                  &local_corr_heading_object.zone_busyness_m,
+                                  &local_corr_heading_object.zone_busyness_r,
+                                  &local_corr_heading_object.zone_busyness_rr,
+                                  &local_corr_heading_object.cycle_time);
+}
 
 /*
  * depth_finder_detector
@@ -215,48 +248,51 @@ struct heading_object_t global_corr_heading_object;
 static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 {
   //time_t start_time;
-  //start_time = time(NULL);
+  clock_t start = clock();
 
   struct depth_object_t local_depth_object;
   memset(&local_depth_object.depth, 0.0f, 207 * sizeof(float));
 
+  uint8_t *previous_buf = (uint8_t *)previous_image.buf;
+  uint8_t *current_buf = (uint8_t *)current_image_p->buf;
+
   float correlations[amount_of_steps];
   float mean, std;
 
-  previous_slice.w = slice_size;
-  previous_slice.h = slice_size;
-  current_slice.w = slice_size;
-  current_slice.h = slice_size;
-
-  struct point_t previous_slice_center, current_slice_center;
+  struct slice_t previous_slice, current_slice;
 
   for (uint8_t slice_i = 0; slice_i < 207; slice_i++) {
     memset(&correlations, 0.0f, amount_of_steps * sizeof(float));
     mean = std = 0.0f;
 
-    previous_slice_center.y = x_eval_locations[slice_i];
-    previous_slice_center.x = y_eval_locations[slice_i];
+    previous_slice.x_center = y_eval_locations[slice_i];
+    previous_slice.y_center = x_eval_locations[slice_i];
 
-    // Get previous slice from previous image around the slice center
-    image_window(&previous_image, &previous_slice, &previous_slice_center);
+    previous_slice.x_origin = previous_slice.x_center - (int16_t) slice_extend;
+    previous_slice.y_origin = previous_slice.y_center - (int16_t) slice_extend;
+    previous_slice.x_max    = previous_slice.x_center + (int16_t) slice_extend;
+    previous_slice.y_max    = previous_slice.y_center + (int16_t) slice_extend;
 
-    uint8_t *previous_buf = (uint8_t *)previous_slice.buf;
+    previous_slice.buffer_origin = (uint16_t) (2 * slice_size * previous_slice.y_origin + 2 * previous_slice.x_origin);
 
     for (uint8_t step_i = 0; step_i < amount_of_steps; step_i++) {
       // TODO check if correct
-      current_slice_center.y = previous_slice_center.y + (uint32_t)(step_i * x_eval_directions[slice_i]);
-      current_slice_center.x = previous_slice_center.x + (uint32_t)(step_i * y_eval_directions[slice_i]);
+      current_slice.x_center = previous_slice.x_center + (uint32_t)(step_i * y_eval_directions[slice_i]);
+      current_slice.y_center = previous_slice.y_center + (uint32_t)(step_i * x_eval_directions[slice_i]);
+
+      current_slice.x_origin = current_slice.x_center - (int16_t) slice_extend;
+      current_slice.y_origin = current_slice.y_center - (int16_t) slice_extend;
+      current_slice.x_max    = current_slice.x_center + (int16_t) slice_extend;
+      current_slice.y_max    = current_slice.y_center + (int16_t) slice_extend;
+
+      current_slice.buffer_origin = (uint16_t) (2 * slice_size * current_slice.y_origin + 2 * current_slice.x_origin);
 
       // Bounds checking
-      if ((int32_t) current_slice_center.x - (int32_t) slice_extend > 0                                &&
-          (int32_t) current_slice_center.x + (int32_t) slice_extend < (int32_t) current_image_p->w - 1 &&
-          (int32_t) current_slice_center.y - (int32_t) slice_extend > 0                                &&
-          (int32_t) current_slice_center.y + (int32_t) slice_extend < (int32_t) current_image_p->h)
+      if (current_slice.x_origin > 0                                &&
+          current_slice.x_max    < (int16_t) current_image_p->w - 1 &&
+          current_slice.y_origin > 0                                &&
+          current_slice.y_max    < (int16_t) current_image_p->h)
       {
-        image_window(current_image_p, &current_slice, &current_slice_center);
-
-        uint8_t *current_buf = (uint8_t *)current_slice.buf;
-
         // Shift color to correct for U and V unevenness
         uint8_t color_shift;
         if ((step_i % 2 == 0 && slice_i % 2 == 0) || (step_i % 2 != 0 && slice_i % 2 != 0)) {
@@ -265,17 +301,20 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
           color_shift = 2;
         }
 
-        uint8_t y_location, uv_location;
-        for (uint8_t x = 0; x < current_slice.w; x++) {
-          for (uint8_t y = 0; y < current_slice.h; y++) {
+        // Y,UV = color coordinates
+        // x,y  = pixel coordinates
+        uint8_t previous_Y_location, previous_UV_location, current_Y_location, current_UV_location;
+        for (uint32_t x_slice = 0; x_slice < slice_size; x_slice++) {
+          for (uint32_t y_slice = 0; y_slice < slice_size; y_slice++) {
             // Y_eval_e
-            y_location = 2 * current_slice.w * y + 2 * x + 1;
-            correlations[step_i] += (float) current_buf[y_location] *
-                                    (float) previous_buf[y_location];
+            previous_Y_location = previous_slice.buffer_origin + 2 * slice_size * y_slice + 2 * x_slice + 1;
+            current_Y_location  = current_slice.buffer_origin  + 2 * slice_size * y_slice + 2 * x_slice + 1;
+            correlations[step_i] += (float) current_buf[current_Y_location] * (float) previous_buf[previous_Y_location];
             // UV
-            uv_location = 2 * current_slice.w * y + 2 * x;
-            correlations[step_i] += (float) current_buf[uv_location + color_shift] *
-                                    (float) previous_buf[uv_location];
+            previous_UV_location = previous_slice.buffer_origin + 2 * slice_size * y_slice + 2 * x_slice;
+            current_UV_location  = current_slice.buffer_origin  + 2 * slice_size * y_slice + 2 * x_slice;
+            correlations[step_i] += (float)  current_buf[current_UV_location + color_shift] *
+                                    (float) previous_buf[previous_UV_location];
           }
         }
         // Change range to 0...1 instead of 0...(2*50*50*255*255)
@@ -308,10 +347,9 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
       local_depth_object.depth[slice_i] = (float) max_i / (float) amount_of_steps;
 
       if (draw) {
-        uint8_t *current_image_buf = (uint8_t *)current_image_p->buf;
 
-        current_image_buf[2 * current_image_p->w * previous_slice_center.y + 2 * previous_slice_center.x + 1] =
-                (uint8_t) (local_depth_object.depth[slice_i] * 255);
+        current_buf[2 * current_image_p->w * previous_slice.y_center + 2 * previous_slice.x_center + 1] =
+                    (uint8_t) (local_depth_object.depth[slice_i] * 255);
       }
     }
   }
@@ -350,12 +388,17 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
       min_zone_i = 2;
     }
 
-    VERBOSE_PRINT("Busyness: %f, %f, %f, %f, %f\nSelected zone: %d, Angle: %f",
-                  zone_busyness[0], zone_busyness[1], zone_busyness[2], zone_busyness[3], zone_busyness[4],
-                  min_zone_i, zone_headings[min_zone_i]);
+    // VERBOSE_PRINT("Busyness: %f, %f, %f, %f, %f\nSelected zone: %d, Angle: %f",
+    //               zone_busyness[0], zone_busyness[1], zone_busyness[2], zone_busyness[3], zone_busyness[4],
+    //               min_zone_i, zone_headings[min_zone_i]);
 
     pthread_mutex_lock(&mutex_heading);
     global_corr_heading_object.best_heading = zone_headings[min_zone_i];
+    global_corr_heading_object.zone_busyness_ll = zone_busyness[0];
+    global_corr_heading_object.zone_busyness_l = zone_busyness[1];
+    global_corr_heading_object.zone_busyness_m = zone_busyness[2];
+    global_corr_heading_object.zone_busyness_r = zone_busyness[3];
+    global_corr_heading_object.zone_busyness_rr = zone_busyness[4];
     global_corr_heading_object.updated = true;
     pthread_mutex_unlock(&mutex_heading);
   } else {
@@ -368,7 +411,12 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p)
 
   image_copy(current_image_p, &previous_image);
 
-  //VERBOSE_PRINT("Correlation time: %f\n", start_time - time(NULL));
+  // VERBOSE_PRINT("Correlation time: %f\n", start_time - time(NULL));
+
+  pthread_mutex_lock(&mutex_heading);
+  clock_t end = clock();
+  global_corr_heading_object.cycle_time = (end - start);
+  pthread_mutex_unlock(&mutex_heading);
 
   return current_image_p;
 }
@@ -380,6 +428,7 @@ struct image_t *corr_depth_finder1(struct image_t *img, uint8_t camera_id __attr
 }
 
 void corr_depth_finder_init(void) {
+  register_periodic_telemetry(DefaultPeriodic, PPRZ_MSG_ID_CORR_DEPTH_FINDER, send_corr_depth_finder);
 
   cdf_max_std = 0.008;
   cdf_threshold = 0.4f;
@@ -391,8 +440,6 @@ void corr_depth_finder_init(void) {
   pthread_mutex_init(&mutex_depth, NULL);
 
   image_create(&previous_image, 240, 520, IMAGE_YUV422);
-  image_create(&previous_slice, slice_size, slice_size, IMAGE_YUV422);
-  image_create(&current_slice, slice_size, slice_size, IMAGE_YUV422);
 
   cv_add_to_device(&DEPTHFINDER_CAMERA, corr_depth_finder1, DEPTHFINDER_FPS, 0);
 }

@@ -114,7 +114,7 @@ inline void setGuided(void){
       <call_once fun="setGuided()"/>
       <stay wp="STDBY"/>
     </block>
-    <block name="STOP">
+    <block key="h" name="HALT">
       <call_once fun="NavSetWaypointHere(WP_STDBY)"/>
       <call_once fun="setNav()"/>
       <stay wp="STDBY"/>

@@ -10,6 +10,10 @@
 #include <math.h>
 #include "pthread.h"
 
+#define SIMD_ENABLED FALSE
+
+//#include "arm_neon.h"
+
 #ifndef GREENFILTER_FPS
 #define GREENFILTER_FPS 0       ///< Default FPS (zero means run at camera fps)
 #endif
@@ -24,6 +28,7 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 #define VERBOSE_PRINT(...)
 #endif
 
+
 // TODO Make auto-select based on build target
 #define CYBERZOO_FILTER FALSE
 #if CYBERZOO_FILTER
@@ -37,11 +42,11 @@ uint8_t gd_cr_max = 160;
 #else
 // Filter Settings NPS/GAZEBO
 uint8_t gd_lum_min = 60;
-uint8_t gd_lum_max = 130;
+uint8_t gd_lum_max = 110;
 uint8_t gd_cb_min = 75;
+uint8_t gd_cb_max = 110;
 uint8_t gd_cr_min = 110;
-uint8_t gd_cb_max = 120;
-uint8_t gd_cr_max = 140;
+uint8_t gd_cr_max = 130;
 #endif
 
 static pthread_mutex_t mutex;
@@ -63,6 +68,13 @@ void apply_threshold(struct image_t *img, uint32_t *green_pixels,
 float get_radial(struct image_t *img, float angle, uint8_t radius);
 
 void get_direction(struct image_t *img, int resolution, float* best_heading, float* safe_length);
+
+//void simd_test(void) {
+//  uint8x8_t a = {1, 2, 3, 4, 5, 6, 7, 8};
+//  uint8x8_t b = {9, 10, 11, 12, 13, 14, 15, 16};
+//  uint8x8_t c = vadd_u8(a, b);
+//  VERBOSE_PRINT("simd: %i\n", c[0]);
+//}
 
 // Create telemetry message
 static void send_green_follower(struct transport_tx *trans, struct link_device *dev) {
@@ -134,16 +146,24 @@ void green_detector_init(void) {
     memset(&global_heading_object, 0, sizeof(struct heading_object_t));
     pthread_mutex_init(&mutex, NULL);
 
-    #ifdef GREEN_DETECTOR_LUM_MIN
+  #ifdef GREEN_DETECTOR_LUM_MIN
         gd_lum_min = GREEN_DETECTOR_LUM_MIN;
         gd_lum_max = GREEN_DETECTOR_LUM_MAX;
         gd_cb_min = GREEN_DETECTOR_CB_MIN;
         gd_cb_max = GREEN_DETECTOR_CB_MAX;
         gd_cr_min = GREEN_DETECTOR_CR_MIN;
         gd_cr_max = GREEN_DETECTOR_CR_MAX;
-    #endif
+  #endif
 
     cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
+
+//    simd_test();
+
+  #if SIMD_ENABLED == TRUE
+    VERBOSE_PRINT("SIMD possible");
+  #else
+    VERBOSE_PRINT("SIMD impossible");
+  #endif
 }
 
 void green_detector_periodic(void) {
@@ -255,13 +275,29 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
         //VERBOSE_PRINT("GF: Radial %f is %f\n", angle, radial);
 
         if (counter >= number_steps_average-1){
+            if (counter == number_steps_average - 1){
+                float average_radial = 0;
+                int steps_used = 0;
+                for (int i = 0; i < (number_steps_average - 1)/2; ++i) {
+                    if (i == 0){
+                        average_radial += radial_memory[i]*sin((i+steps_used)*step_size);
+                        //VERBOSE_PRINT("GF: check right %f\n", radial_memory[i]/240);
+                    } else {
+                    average_radial += (radial_memory[i+steps_used] * sin((i+steps_used)*step_size) + radial_memory[i+steps_used+1] * sin((i+steps_used+1)*step_size));
+                    average_radial = average_radial/(2*i+1);
+                    steps_used += 1;
+                    }
+                    if (average_radial > *safe_length) {
+                        *best_heading = i*step_size;
+                        *safe_length = average_radial;
+                    }
+                }
+            }
+
             float average_radial = 0;
             float angle_in_middle = angle - (number_steps_average-1)*step_size/2;
             for (int i = 0; i < number_steps_average; ++i) {
-            //Podriamos poner el weighting multiplicando aqui
-                //average_radial += radial_memory[i];
-                //average_radial += radial_memory[i]*sin(((M_PI/6 + angle - (number_steps_average-1-i)*step_size)-M_PI/6)*M_PI/(5*M_PI/6-M_PI/6));
-                average_radial += radial_memory[i] * 0.75 * sin(angle - (number_steps_average-1-i)*step_size);
+                average_radial += radial_memory[i] * sin(angle - (number_steps_average-1-i)*step_size);
             }
             //average_radial = average_radial*sin((angle_in_middle-M_PI/6)*M_PI/(5*M_PI/6-M_PI/6))/number_steps_average;
             average_radial = average_radial/number_steps_average;
@@ -269,6 +305,19 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
             if (average_radial > *safe_length) {
                 *best_heading = angle_in_middle;
                 *safe_length = average_radial;
+            }
+            if(counter == resolution-1){
+                average_radial = average_radial*number_steps_average;
+                int steps_used = 0;
+                for (int i = 0; i < (number_steps_average - 1)/2; ++i) {
+                    average_radial += -(radial_memory[i+steps_used]*sin(angle-(number_steps_average-1-2*steps_used)*step_size) + radial_memory[i+steps_used+1] * sin(angle-(number_steps_average-1-2*steps_used-1)*step_size));
+                    average_radial = average_radial/(number_steps_average-2*(i+1));
+                    steps_used += 1;
+                    if (average_radial > *safe_length) {
+                        *best_heading = angle-((number_steps_average-1)/2-i)*step_size;
+                        *safe_length = average_radial;
+                    }
+                }
             }
         }
 

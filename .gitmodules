@@ -19,9 +19,6 @@
 [submodule "sw/ext/mavlink"]
 	path = sw/ext/mavlink
 	url = https://github.com/mavlink/mavlink.git
-[submodule "sw/ext/pprzlink"]
-	path = sw/ext/pprzlink
-	url = https://github.com/paparazzi/pprzlink.git
 [submodule "sw/ext/opencv_bebop"]
 	path = sw/ext/opencv_bebop
 	url = https://github.com/tudelft/opencv_bebop.git

@@ -38,7 +38,7 @@
 // define settings
 float gf_set_speed = 0.4f;           // max flight speed [m/s]
 float gf_floor_count_frac = 0.01f;  // percentage of the image that needs to be green before turning around
-float gf_sideways_speed_factor = 0.1f;  // Oversteer correction
+float gf_sideways_speed_factor = 0.25f;  // Oversteer correction
 float gf_set_height = 0.5f;
 float gf_height_gain = 0.1f;
 
@@ -117,6 +117,7 @@ void green_follower_periodic(void)
       float heading_sp = current_best_heading_green + current_best_heading_corr;
 
       guidance_h_set_body_vel(speed_sp, gf_sideways_speed_factor * heading_sp);
+      //guidance_h_set_body_vel(speed_sp, 0);
       guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
       // Height controller doesn't work yet
       // guidance_v_set_vz((gf_set_height - stateGetPositionNed_f()->z) * gf_height_gain);

@@ -51,6 +51,8 @@ uint8_t gd_cr_min = 110;
 uint8_t gd_cr_max = 130;
 #endif
 
+float weight_function = 0.8;
+
 int scan_resolution = 100; // Amount of radials
 clock_t start_cycle_counter = 0; // Start timer for cycles_since_update
 clock_t end_cycle_counter = 0; // End timer for cycles_since_update
@@ -302,7 +304,7 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
                         average_radial += radial_memory[i]*sin((i+steps_used)*step_size);
                         //VERBOSE_PRINT("GF: check right %f\n", radial_memory[i]/240);
                     } else {
-                    average_radial += (radial_memory[i+steps_used] * sin((i+steps_used)*step_size) + radial_memory[i+steps_used+1] * sin((i+steps_used+1)*step_size));
+                    average_radial += (radial_memory[i+steps_used]*((1-weight_function)+weight_function*sin((i+steps_used)*step_size)) + radial_memory[i+steps_used+1]*((1-weight_function)+weight_function*sin((i+steps_used+1)*step_size)));
                     average_radial = average_radial/(2*i+1);
                     steps_used += 1;
                     }
@@ -316,7 +318,7 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
             float average_radial = 0;
             float angle_in_middle = angle - (number_steps_average-1)*step_size/2;
             for (int i = 0; i < number_steps_average; ++i) {
-                average_radial += radial_memory[i] * sin(angle - (number_steps_average-1-i)*step_size);
+                average_radial += radial_memory[i]*((1-weight_function)+weight_function*sin(angle - (number_steps_average-1-i)*step_size));
             }
             //average_radial = average_radial*sin((angle_in_middle-M_PI/6)*M_PI/(5*M_PI/6-M_PI/6))/number_steps_average;
             average_radial = average_radial/number_steps_average;
@@ -329,7 +331,7 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
                 average_radial = average_radial*number_steps_average;
                 int steps_used = 0;
                 for (int i = 0; i < (number_steps_average - 1)/2; ++i) {
-                    average_radial += -(radial_memory[i+steps_used]*sin(angle-(number_steps_average-1-2*steps_used)*step_size) + radial_memory[i+steps_used+1] * sin(angle-(number_steps_average-1-2*steps_used-1)*step_size));
+                    average_radial += -(radial_memory[i+steps_used]*((1-weight_function)+weight_function*sin(angle-(number_steps_average-1-2*steps_used)*step_size)) + radial_memory[i+steps_used+1]*((1-weight_function)+weight_function*sin(angle-(number_steps_average-1-2*steps_used-1)*step_size)));
                     average_radial = average_radial/(number_steps_average-2*(i+1));
                     steps_used += 1;
                     if (average_radial > *safe_length) {

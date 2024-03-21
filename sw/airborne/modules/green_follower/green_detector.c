@@ -401,7 +401,8 @@ void green_detector_init(void) {
 
     cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
 
-    #ifdef SIMD_ENABLED
+    // Initialize the SIMD parameters
+    #if SIMD_ENABLED == TRUE
         uint8_t min_thresh_array[16] = {gd_cb_min, gd_lum_min, gd_cr_min, gd_lum_min,
                                         gd_cb_min, gd_lum_min, gd_cr_min, gd_lum_min,
                                         gd_cb_min, gd_lum_min, gd_cr_min, gd_lum_min,

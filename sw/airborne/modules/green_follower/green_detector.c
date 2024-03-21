@@ -12,7 +12,9 @@
 
 #define SIMD_ENABLED FALSE
 
-//#include "arm_neon.h"
+#if SIMD_ENABLED == TRUE
+#include "arm_neon.h"
+#endif
 
 #ifndef GREENFILTER_FPS
 #define GREENFILTER_FPS 0       ///< Default FPS (zero means run at camera fps)
@@ -50,8 +52,8 @@ uint8_t gd_cr_max = 130;
 #endif
 
 int scan_resolution = 100; // Amount of radials
-clock_t start_cycle_counter = clock(); // Start timer for cycles_since_update
-clock_t end_cycle_counter = clock(); // End timer for cycles_since_update
+clock_t start_cycle_counter = 0; // Start timer for cycles_since_update
+clock_t end_cycle_counter = 0; // End timer for cycles_since_update
 static pthread_mutex_t mutex;
 
 // Struct with relevant information for the navigation
@@ -65,6 +67,7 @@ struct heading_object_t {
 };
 struct heading_object_t global_heading_object;
 
+#if SIMD_ENABLED == TRUE
 struct threshold_object_t {
     uint8x16_t zero_array = vdup_n_u8(0);
     uint8x16_t one_array = vdup_n_u8(1);
@@ -77,6 +80,7 @@ struct threshold_object_t {
     uint16x8_t max_thresh;
 };
 struct threshold_object_t gto;
+#endif
 
 void apply_threshold(struct image_t *img, uint32_t *green_pixels,
                      uint8_t lum_min, uint8_t lum_max,

@@ -2329,6 +2329,7 @@
         <field name="safe_distance" type="float"/>
         <field name="green_pixels" type="uint32"/>
         <field name="cycle_time" type="float"/>
+        <field name="cycles_since_update" type="float"/>
     </message>
 
     <message name="CORR_DEPTH_FINDER" id="195">

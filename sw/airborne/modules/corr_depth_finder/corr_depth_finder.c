@@ -13,6 +13,12 @@
 #include "pthread.h"
 #include "state.h"
 
+#define SIMD_ENABLED FALSE
+
+#if SIMD_ENABLED == TRUE
+#include "arm_neon.h"
+#endif
+
 #ifndef DEPTHFINDER_FPS
 #define DEPTHFINDER_FPS 0       ///< Default FPS (zero means run at camera fps)
 #endif
@@ -32,7 +38,7 @@
 
 // SETTINGS
 const uint8_t amount_of_steps = 15;
-const uint8_t slice_size = 10;
+const uint8_t slice_size = 8;
 const uint8_t slice_extend = slice_size / 2;
 const bool draw = true;
 
@@ -241,7 +247,7 @@ static void send_corr_depth_finder(struct transport_tx *trans, struct link_devic
  */
 static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
   //time_t start_time;
-  clock_t start = clock();
+//  clock_t start = clock();
 
   uint8_t *previous_buf = (uint8_t *) previous_image.buf;
   uint8_t *current_buf = (uint8_t *) current_image_p->buf;
@@ -254,6 +260,7 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
 
   struct slice_t previous_slice, current_slice;
 
+  clock_t start = clock();
   for (uint8_t slice_i = 0; slice_i < 207; slice_i++) {
     memset(&correlations, 0.0f, amount_of_steps * sizeof(float));
     mean = std = 0.0f;
@@ -294,21 +301,55 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
 
         // Y,UV = color coordinates
         // x,y  = pixel coordinates
-        uint8_t previous_Y_location, previous_UV_location, current_Y_location, current_UV_location;
-        for (uint32_t x_slice = 0; x_slice < slice_size; x_slice++) {
+        uint32_t previous_Y_location, previous_UV_location, current_Y_location, current_UV_location;
+        #if SIMD_ENABLED == TRUE
+
+          uint8x16_t partial_sum = vdupq_n_u8(0);
           for (uint32_t y_slice = 0; y_slice < slice_size; y_slice++) {
-            uint32_t buffer_offset = 2 * slice_size * y_slice + 2 * x_slice + 1;
-            // Y_eval_e
-            previous_Y_location = previous_slice.buffer_origin + buffer_offset;
-            current_Y_location  = current_slice.buffer_origin  + buffer_offset;
-            correlations[step_i] += (float) current_buf[current_Y_location] * (float) previous_buf[previous_Y_location];
-            // UV
-            previous_UV_location = previous_slice.buffer_origin + buffer_offset;
-            current_UV_location  = current_slice.buffer_origin  + buffer_offset;
-            correlations[step_i] += (float) current_buf[current_UV_location + color_shift] *
-                                    (float) previous_buf[previous_UV_location];
+            for (uint32_t x_slice = 0; x_slice < slice_size; x_slice += 16) {
+              uint32_t buffer_offset = 2 * slice_size * y_slice + 2 * x_slice + 1;
+              // Y_eval_e
+              previous_Y_location = previous_slice.buffer_origin + buffer_offset;
+              current_Y_location  = current_slice.buffer_origin  + buffer_offset;
+              previous_UV_location = previous_slice.buffer_origin + buffer_offset;
+              current_UV_location  = current_slice.buffer_origin  + buffer_offset;
+              uint8x16_t current_buf_y_vec, previous_buf_y_vec, current_buf_uv_vec, previous_buf_uv_vec;
+              // TODO improve loading
+              for (uint32_t buf_x = 0; buf_x < 16; buf_x++) {
+                current_buf_y_vec[buf_x]   =  current_buf[current_Y_location   + 2 * buf_x];
+                previous_buf_y_vec[buf_x]  = previous_buf[previous_Y_location  + 2 * buf_x];
+                current_buf_uv_vec[buf_x]  =  current_buf[current_UV_location  + 2 * buf_x + color_shift];
+                previous_buf_uv_vec[buf_x] = previous_buf[previous_UV_location + 2 * buf_x];
+              }
+              partial_sum = vmlaq_u8(current_buf_y_vec, previous_buf_y_vec, partial_sum);
+              partial_sum = vmlaq_u8(current_buf_uv_vec, previous_buf_uv_vec, partial_sum);
+
+            }
           }
-        }
+          // TODO Improve to HADD
+          for (uint8_t vec_i = 0; vec_i < 16; vec_i++) {
+            correlations[step_i] += partial_sum[vec_i];
+          }
+
+        #else
+          for (uint32_t x_slice = 0; x_slice < slice_size; x_slice++) {
+            for (uint32_t y_slice = 0; y_slice < slice_size; y_slice++) {
+              uint32_t buffer_offset = 2 * slice_size * y_slice + 2 * x_slice + 1;
+              // Y_eval_e
+              previous_Y_location = previous_slice.buffer_origin + buffer_offset;
+              current_Y_location  = current_slice.buffer_origin  + buffer_offset;
+              correlations[step_i] += (float) current_buf[current_Y_location] * (float) previous_buf[previous_Y_location];
+              // UV
+              previous_UV_location = previous_slice.buffer_origin + buffer_offset;
+              current_UV_location  = current_slice.buffer_origin  + buffer_offset;
+              correlations[step_i] += (float) current_buf[current_UV_location + color_shift] *
+                                      (float) previous_buf[previous_UV_location];
+            }
+          }
+        #endif
+
+
+
         // Change range to 0...1 instead of 0...(2*50*50*255*255)
         correlations[step_i] /= 325125000.0f;
 
@@ -345,6 +386,10 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
       }
     }
   }
+  pthread_mutex_lock(&mutex);
+  clock_t end = clock();
+  global_corr_heading_object.cycle_time = (end - start);
+  pthread_mutex_unlock(&mutex);
 
   float zone_busyness[5] = {0, 0, 0, 0, 0};
   uint8_t zone_selection;
@@ -393,15 +438,14 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
   global_corr_heading_object.updated = true;
   pthread_mutex_unlock(&mutex);
 
-
   image_copy(current_image_p, &previous_image);
 
   // VERBOSE_PRINT("Correlation time: %f\n", start_time - time(NULL));
 
-  pthread_mutex_lock(&mutex);
-  clock_t end = clock();
-  global_corr_heading_object.cycle_time = (end - start);
-  pthread_mutex_unlock(&mutex);
+//  pthread_mutex_lock(&mutex);
+//  clock_t end = clock();
+//  global_corr_heading_object.cycle_time = (end - start);
+//  pthread_mutex_unlock(&mutex);
 
   return current_image_p;
 }

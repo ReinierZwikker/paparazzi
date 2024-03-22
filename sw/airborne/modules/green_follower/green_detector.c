@@ -10,7 +10,7 @@
 #include <math.h>
 #include "pthread.h"
 
-#define SIMD_ENABLED FALSE
+#define SIMD_ENABLED TRUE
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
@@ -32,14 +32,14 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 
 
 // TODO Make auto-select based on build target
-#define CYBERZOO_FILTER FALSE
+#define CYBERZOO_FILTER TRUE
 #if CYBERZOO_FILTER
 // Filter Settings CYBERZOO
 uint8_t gd_lum_min = 60;
 uint8_t gd_lum_max = 140;
 uint8_t gd_cb_min = 24;
-uint8_t gd_cr_min = 100;
-uint8_t gd_cb_max = 28;
+uint8_t gd_cb_max = 100;
+uint8_t gd_cr_min = 28;
 uint8_t gd_cr_max = 160;
 #else
 // Filter Settings NPS/GAZEBO
@@ -315,7 +315,7 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
         if (counter >= number_steps_average-1){
             float correction_weight = 0.1*(1-global_heading_object.green_pixels/(520.0 * 240.0));
             //float correction_weight = 0;
-            VERBOSE_PRINT("GF: correction weight %f\n", correction_weight);
+            // VERBOSE_PRINT("GF: correction weight %f\n", correction_weight);
             if (counter == number_steps_average - 1){
                 float average_radial = 0;
                 int steps_used = 0;

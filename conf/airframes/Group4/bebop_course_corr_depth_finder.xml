@@ -39,10 +39,10 @@
         <!--module name="bebop_ae_awb">
           <define name="CV_AE_AWB_VERBOSE" value="0" />
         </module-->
-        <module name="video_capture">
-            <define name="VIDEO_CAPTURE_CAMERA" value="front_camera"/>
-            <define name="VIDEO_CAPTURE_FPS" value="10"/>
-        </module>
+<!--        <module name="video_capture">-->
+<!--            <define name="VIDEO_CAPTURE_CAMERA" value="front_camera"/>-->
+<!--            <define name="VIDEO_CAPTURE_FPS" value="10"/>-->
+<!--        </module>-->
         <module name="corr_depth_finder">
             <define name="DEPTHFINDER_CAMERA" value="front_camera"/>
             <define name="DEPTHFINDER_FPS" value="5"/>
@@ -56,12 +56,12 @@
             <define name="GREEN_FOLLOWER_VISUAL_DETECTION_ID" value="GREEN_DETECTION_ID"/>
             <define name="CORR_DEPTH_FINDER_VISUAL_DETECTION_ID" value="CORR_DEPTH_ID"/>
         </module>
-        <module name="video_rtp_stream">
-            <define name="VIEWVIDEO_CAMERA" value="front_camera"/>
-            <define name="VIEWVIDEO_CAMERA2" value="bottom_camera"/>
-            <define name="VIEWVIDEO_DOWNSIZE_FACTOR" value="1"/>
-            <define name="VIEWVIDEO_QUALITY_FACTOR" value="40"/>
-        </module>
+<!--        <module name="video_rtp_stream">-->
+<!--            <define name="VIEWVIDEO_CAMERA" value="front_camera"/>-->
+<!--            <define name="VIEWVIDEO_CAMERA2" value="bottom_camera"/>-->
+<!--            <define name="VIEWVIDEO_DOWNSIZE_FACTOR" value="1"/>-->
+<!--            <define name="VIEWVIDEO_QUALITY_FACTOR" value="40"/>-->
+<!--        </module>-->
     </firmware>
 
     <commands>

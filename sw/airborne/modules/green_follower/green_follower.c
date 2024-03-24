@@ -49,6 +49,9 @@ float current_safe_length = 0.0f;
 uint32_t current_green_pixels = 0;
 uint8_t waiting_cycles = 0;
 
+float previous_best_heading = 0.0f;
+int escaping = 0;
+
 
 // This call back will be used to receive the color count from the orange detector
 #ifndef GREEN_FOLLOWER_VISUAL_DETECTION_ID
@@ -110,23 +113,47 @@ void green_follower_periodic(void)
     }
     else if (current_green_pixels > floor_count_threshold) {*/
     if (current_green_pixels > floor_count_threshold && current_safe_length > 15) {
+      //if (escaping == 1){
+      //  escaping = 0;
+      //  previous_best_heading = 0;
+      //}
       float speed_sp = fminf(gf_set_speed, current_safe_length / 100);
 
         //VERBOSE_PRINT("GF: Moving from %f towards %f (d=%f) at %f\n", stateGetNedToBodyEulers_f()->psi, stateGetNedToBodyEulers_f()->psi + current_best_heading_green, current_best_heading_green, speed_sp);
-
       float heading_sp = current_best_heading_green + current_best_heading_corr;
+      //heading_sp = 0.7*previous_best_heading + 0.3*heading_sp;
+      if (heading_sp <= fabs(M_PI/6) && fabs(heading_sp-previous_best_heading)<=15*M_PI/180) {
+        guidance_h_set_body_vel(speed_sp, 0);
+        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + 0);
+        previous_best_heading = 0;
+      } else if (heading_sp <= fabs(M_PI/6) && fabs(heading_sp-previous_best_heading)>15*M_PI/180){
+        heading_sp = 0.5*previous_best_heading + 0.5*heading_sp;
+        guidance_h_set_body_vel(speed_sp, 0);
+        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
+        previous_best_heading = heading_sp;
+      } else if (heading_sp > fabs(M_PI/6) && fabs(heading_sp-previous_best_heading)<M_PI/2){
+        guidance_h_set_body_vel(0, 0);
+        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
+        previous_best_heading = heading_sp;
+      } else {
+        guidance_h_set_body_vel(0, 0);
+        guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + previous_best_heading);
+        previous_best_heading = previous_best_heading;
+      }
 
-      guidance_h_set_body_vel(speed_sp, gf_sideways_speed_factor * heading_sp);
-      //guidance_h_set_body_vel(speed_sp, 0);
-      guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
+      //guidance_h_set_body_vel(speed_sp, gf_sideways_speed_factor * heading_sp);
+
+
       // Height controller doesn't work yet
       // guidance_v_set_vz((gf_set_height - stateGetPositionNed_f()->z) * gf_height_gain);
       // VERBOSE_PRINT("h: %f, u: %f", stateGetPositionNed_f()->z, (gf_set_height - stateGetPositionNed_f()->z) * gf_height_gain);
     } else {
       // VERBOSE_PRINT("GF: ESCAPING! Floor threshold: %d / %d\n", current_green_pixels, floor_count_threshold);
-
-      guidance_h_set_body_vel(-0.2f, 0);
-      guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + M_PI/4);
+      float heading_sp = M_PI/4;
+      guidance_h_set_body_vel(0.0f, 0);
+      guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
+      previous_best_heading = 0;
+      //escaping = 1;
       // guidance_v_set_vz(0);
       // waiting_cycles = 4;
     }

@@ -56,12 +56,12 @@
             <define name="GREEN_FOLLOWER_VISUAL_DETECTION_ID" value="GREEN_DETECTION_ID"/>
             <define name="CORR_DEPTH_FINDER_VISUAL_DETECTION_ID" value="CORR_DEPTH_ID"/>
         </module>
-<!--        <module name="video_rtp_stream">-->
-<!--            <define name="VIEWVIDEO_CAMERA" value="front_camera"/>-->
-<!--            <define name="VIEWVIDEO_CAMERA2" value="bottom_camera"/>-->
-<!--            <define name="VIEWVIDEO_DOWNSIZE_FACTOR" value="1"/>-->
-<!--            <define name="VIEWVIDEO_QUALITY_FACTOR" value="40"/>-->
-<!--        </module>-->
+        <module name="video_rtp_stream">
+            <define name="VIEWVIDEO_CAMERA" value="front_camera"/>
+            <define name="VIEWVIDEO_CAMERA2" value="bottom_camera"/>
+            <define name="VIEWVIDEO_DOWNSIZE_FACTOR" value="1"/>
+            <define name="VIEWVIDEO_QUALITY_FACTOR" value="40"/>
+        </module>
     </firmware>
 
     <commands>

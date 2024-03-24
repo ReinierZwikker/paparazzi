@@ -10,7 +10,7 @@
 #include <math.h>
 #include "pthread.h"
 
-#define SIMD_ENABLED TRUE
+#define SIMD_ENABLED FALSE
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
@@ -32,13 +32,13 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 
 
 // TODO Make auto-select based on build target
-#define CYBERZOO_FILTER TRUE
+#define CYBERZOO_FILTER FALSE
 #if CYBERZOO_FILTER
 // Filter Settings CYBERZOO
 uint8_t gd_lum_min = 60;
 uint8_t gd_lum_max = 140;
 uint8_t gd_cb_min = 24;
-uint8_t gd_cb_max = 100;
+uint8_t gd_cb_max = 105;
 uint8_t gd_cr_min = 28;
 uint8_t gd_cr_max = 160;
 #else
@@ -51,7 +51,7 @@ uint8_t gd_cr_min = 110;
 uint8_t gd_cr_max = 130;
 #endif
 
-float weight_function = 0.88;
+float weight_function = 0.85;
 
 int scan_resolution = 100; // Amount of radials
 clock_t start_cycle_counter = 0; // Start timer for cycles_since_update
@@ -210,9 +210,7 @@ float get_radial(struct image_t *img, float angle, uint8_t radius) {
         y = (uint16_t)((double)img->h/2 + i * cos(angle));
         x = (uint16_t)(i * sin(angle));
         if (buffer[y * 2 * img->w + 2 * x + 1] == 255) {
-            sum += 5;
-        } else {
-            sum--;
+            sum += 1;
         }
     }
 
@@ -297,9 +295,9 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
     for (float angle = 0.001; angle < M_PI; angle += step_size) {
         float radial = get_radial(img, angle, img->w);
 
-        if (counter + 1 > number_steps_average){
+        if (counter > number_steps_average - 1){
             // Move elements one position up and discard the first element
-            for (int i = 0; i < number_steps_average-2; ++i){
+            for (int i = 0; i < number_steps_average-1; ++i){
                 radial_memory[i] = radial_memory[i+1];
             }
             // Store value in the last position
@@ -310,10 +308,9 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
         }
 
 
-        //VERBOSE_PRINT("GF: Radial %f is %f\n", angle, radial);
 
         if (counter >= number_steps_average-1){
-            float correction_weight = 0.1*(1-global_heading_object.green_pixels/(520.0 * 240.0));
+            float correction_weight = 0.2*(1-2*global_heading_object.green_pixels/(520.0 * 240.0));
             //float correction_weight = 0;
             // VERBOSE_PRINT("GF: correction weight %f\n", correction_weight);
             if (counter == number_steps_average - 1){
@@ -321,11 +318,13 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
                 int steps_used = 0;
                 for (int i = 0; i < (number_steps_average - 1)/2; ++i) {
                     if (i == 0){
-                        average_radial += radial_memory[i]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin((i+steps_used)*step_size));
+                        //average_radial += radial_memory[i]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin((i+steps_used)*step_size));
+                        average_radial += radial_memory[i]*(1.5 - (weight_function-correction_weight)*fabs((i+steps_used)*step_size-M_PI/2)-0.5*sin((i+steps_used)*step_size));
                         //VERBOSE_PRINT("GF: check right %f\n", radial_memory[i]/240);
                     } else {
 
-                    average_radial += (radial_memory[i+steps_used]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin((i+steps_used)*step_size)) + radial_memory[i+steps_used+1]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin((i+steps_used+1)*step_size)));
+                    //average_radial += (radial_memory[i+steps_used]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin((i+steps_used)*step_size)) + radial_memory[i+steps_used+1]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin((i+steps_used+1)*step_size)));
+                    average_radial += (radial_memory[i+steps_used]*(1.5 - (weight_function-correction_weight)*fabs((i+steps_used)*step_size-M_PI/2)-0.5*sin((i+steps_used)*step_size)) + radial_memory[i+steps_used+1]*(1.5 - (weight_function-correction_weight)*fabs((i+steps_used+1)*step_size-M_PI/2)-0.5*sin((i+steps_used+1)*step_size)));
                     average_radial = average_radial/(2*i+1);
                     steps_used += 1;
                     }
@@ -339,7 +338,8 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
             float average_radial = 0;
             float angle_in_middle = angle - (number_steps_average-1)*step_size/2;
             for (int i = 0; i < number_steps_average; ++i) {
-                average_radial += radial_memory[i]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin(angle - (number_steps_average-1-i)*step_size));
+                //average_radial += radial_memory[i]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin(angle - (number_steps_average-1-i)*step_size));
+                average_radial += (radial_memory[i]*(1.5 - (weight_function-correction_weight)*fabs(angle-(number_steps_average-1-i)*step_size-M_PI/2)-0.5*sin(angle-(number_steps_average-1-i)*step_size)));
             }
             //average_radial = average_radial*sin((angle_in_middle-M_PI/6)*M_PI/(5*M_PI/6-M_PI/6))/number_steps_average;
             average_radial = average_radial/number_steps_average;
@@ -351,14 +351,18 @@ void get_direction(struct image_t *img, int resolution, float *best_heading, flo
             if(counter == resolution-1){
                 average_radial = average_radial*number_steps_average;
                 int steps_used = 0;
+
                 for (int i = 0; i < (number_steps_average - 1)/2; ++i) {
-                    average_radial += -(radial_memory[i+steps_used]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin(angle-(number_steps_average-1-2*steps_used)*step_size)) + radial_memory[i+steps_used+1]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin(angle-(number_steps_average-1-2*steps_used-1)*step_size)));
+                    //average_radial += -(radial_memory[i+steps_used]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin(angle-(number_steps_average-1-2*steps_used)*step_size)) + radial_memory[i+steps_used+1]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin(angle-(number_steps_average-1-2*steps_used-1)*step_size)));
+                    average_radial += -(radial_memory[i+steps_used]*(1.5 - (weight_function-correction_weight)*fabs(angle-(number_steps_average-1-2*steps_used)*step_size-M_PI/2)-0.5*sin(angle-(number_steps_average-1-2*steps_used)*step_size))+radial_memory[i+steps_used+1]*(1.5 - (weight_function-correction_weight)*fabs(angle-(number_steps_average-1-2*steps_used-1)*step_size-M_PI/2)-0.5*sin(angle-(number_steps_average-1-2*steps_used-1)*step_size)));
                     average_radial = average_radial/(number_steps_average-2*(i+1));
                     steps_used += 1;
+
                     if (average_radial > *safe_length) {
                         *best_heading = angle-((number_steps_average-1)/2-i)*step_size;
                         *safe_length = average_radial;
                     }
+                    average_radial = average_radial*(number_steps_average-2*(i+1));
                 }
             }
         }

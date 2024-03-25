@@ -30,6 +30,7 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 #define VERBOSE_PRINT(...)
 #endif
 
+uint16_t *hysteresis_template_p;
 
 // TODO Make auto-select based on build target
 #define CYBERZOO_FILTER TRUE
@@ -51,6 +52,13 @@ uint8_t gd_cr_min = 110;
 uint8_t gd_cr_max = 130;
 #endif
 
+uint8_t local_lum_min;
+uint8_t local_lum_max;
+uint8_t local_cb_min;
+uint8_t local_cb_max;
+uint8_t local_cr_min;
+uint8_t local_cr_max;
+
 float weight_function = 0.85;
 
 int scan_resolution = 100; // Amount of radials
@@ -61,6 +69,7 @@ static pthread_mutex_t mutex;
 // Struct with relevant information for the navigation
 struct heading_object_t {
     float best_heading;
+    uint16_t old_direction;
     float safe_length;
     uint32_t green_pixels;
     float cycle_time;
@@ -90,9 +99,12 @@ float get_radial(struct image_t *img, float angle, uint8_t radius);
 
 void get_direction(struct image_t *img, int resolution, float* best_heading, float* safe_length);
 
+void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t width);
 void get_lines(struct image_t *img, uint8_t* band_sum);
 void add_band_sums(uint8_t* band_sum, uint32_t* green_pixel);
 void average_regions_32(uint8_t* band_sum, uint8_t* average_array);
+void get_direction_simd(uint8_t* average_array, uint16_t* local_hysteresis_template_p,
+                        uint16_t old_direction, uint16_t* new_direction, float* safe_length);
 
 // Create telemetry message
 static void send_green_follower(struct transport_tx *trans, struct link_device *dev) {
@@ -116,74 +128,72 @@ static void send_green_follower(struct transport_tx *trans, struct link_device *
  */
 static struct image_t *green_heading_finder(struct image_t *img)
 {
-    uint8_t lum_min, lum_max;
-    uint8_t cb_min, cb_max;
-    uint8_t cr_min, cr_max;
 
     float best_heading, safe_length;
 
-    uint32_t green_pixels_simd = 0;
-    uint32_t green_pixels_norm = 0;
-
     uint32_t green_pixels;
 
-    lum_min = gd_lum_min;
-    lum_max = gd_lum_max;
-    cb_min = gd_cb_min;
-    cb_max = gd_cb_max;
-    cr_min = gd_cr_min;
-    cr_max = gd_cr_max;
-
-
+    clock_t start = clock();
     #if SIMD_ENABLED == TRUE
-    clock_t start_simd = clock();
+      if (local_lum_min + local_lum_max + local_cb_min +
+          local_cb_max + local_cr_min + local_cr_max !=
+          gd_lum_min + gd_lum_max + gd_cb_min + gd_cb_max + gd_cr_min + gd_cr_max) {
 
-//    // Thresholds start
-//
-//    uint8_t min_thresh_array[16] = {cb_min, lum_min, cr_min, lum_min,
-//                                    cb_min, lum_min, cr_min, lum_min,
-//                                    cb_min, lum_min, cr_min, lum_min,
-//                                    cb_min, lum_min, cr_min, lum_min};
-//    uint8_t *min_thresh_pointer = min_thresh_array;
-//    uint8_t max_thresh_array[16] = {cb_max, lum_max, cr_max, lum_max,
-//                                    cb_max, lum_max, cr_max, lum_max,
-//                                    cb_max, lum_max, cr_max, lum_max,
-//                                    cb_max, lum_max, cr_max, lum_max};
-//    uint8_t *max_thresh_pointer = max_thresh_array;
-//
-//    gto.min_thresh = vld1q_u8(min_thresh_pointer);
-//    gto.max_thresh = vld1q_u8(max_thresh_pointer);
-//    // Thresholds end
+        local_lum_min = gd_lum_min;
+        local_lum_max = gd_lum_max;
+        local_cb_min = gd_cb_min;
+        local_cb_max = gd_cb_max;
+        local_cr_min = gd_cr_min;
+        local_cr_max = gd_cr_max;
 
-    uint8_t band_sum[520];
-    memset(&band_sum, 0, 520*sizeof(uint8_t));
-    uint8_t average_array[504];
 
-    get_lines(img, &band_sum[0]);
-    add_band_sums(&band_sum[0], &green_pixels);
-    average_regions_32(&band_sum[0], &average_array[0]);
+        uint8_t min_thresh_array[16] = {local_cb_min, local_lum_min, local_cr_min, local_lum_min,
+                                        local_cb_min, local_lum_min, local_cr_min, local_lum_min,
+                                        local_cb_min, local_lum_min, local_cr_min, local_lum_min,
+                                        local_cb_min, local_lum_min, local_cr_min, local_lum_min};
+        uint8_t *min_thresh_pointer = min_thresh_array;
+        uint8_t max_thresh_array[16] = {local_cb_max, local_lum_max, local_cr_max, local_lum_max,
+                                        local_cb_max, local_lum_max, local_cr_max, local_lum_max,
+                                        local_cb_max, local_lum_max, local_cr_max, local_lum_max,
+                                        local_cb_max, local_lum_max, local_cr_max, local_lum_max};
+        uint8_t *max_thresh_pointer = max_thresh_array;
 
-    green_pixels_simd = green_pixels;
-    clock_t end_simd = clock();
+        gto.min_thresh = vld1q_u8(min_thresh_pointer);
+        gto.max_thresh = vld1q_u8(max_thresh_pointer);
+      }
 
-    clock_t start_norm = clock();
-    apply_threshold(img, &green_pixels, lum_min, lum_max, cb_min, cb_max, cr_min, cr_max);
-    green_pixels_norm = green_pixels;
-    clock_t end_norm = clock();
+      uint16_t old_direction = global_heading_object.old_direction;
+      uint16_t new_direction = 0;
+
+      uint8_t band_sum[520];
+      memset(&band_sum, 0, 520*sizeof(uint8_t));
+      uint8_t average_array[480];
+      memset(&average_array, 0, 480*sizeof(uint8_t));
+
+      get_lines(img, &band_sum[0]);
+      add_band_sums(&band_sum[0], &green_pixels);
+      average_regions_32(&band_sum[0], &average_array[0]);
+      get_direction_simd(&average_array[0], hysteresis_template_p,
+                         old_direction, &new_direction, &safe_length);
+
+      float new_heading = ((float)new_direction - 240) * 0.004;
+
     #else
-    // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
-    apply_threshold(img, &green_pixels, lum_min, lum_max, cb_min, cb_max, cr_min, cr_max);
-    // Scan in radials from the centre bottom of the image to find the direction with the most green pixels
-    get_direction(img, scan_resolution, &best_heading, &safe_length);
+      // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
+      apply_threshold(img, &green_pixels, gd_lum_min, gd_lum_max, gd_cb_min, gd_cb_max, gd_cr_min, gd_cr_max);
+      // Scan in radials from the centre bottom of the image to find the direction with the most green pixels
+      get_direction(img, scan_resolution, &best_heading, &safe_length);
     #endif
+    clock_t end = clock();
 
     pthread_mutex_lock(&mutex);
-    global_heading_object.best_heading = (end_norm - start_norm);
-    global_heading_object.safe_length = (float)green_pixels_simd;
-    global_heading_object.green_pixels = green_pixels_norm;
+    global_heading_object.best_heading = new_heading;
+    global_heading_object.old_direction = new_direction;
+    global_heading_object.safe_length = safe_length;
+    global_heading_object.green_pixels = green_pixels;
     global_heading_object.updated = true;
 
-    global_heading_object.cycle_time = (end_simd - start_simd);
+    global_heading_object.cycle_time = (end - start);
     pthread_mutex_unlock(&mutex);
 
     return img;
@@ -255,6 +265,13 @@ float get_radial(struct image_t *img, float angle, uint8_t radius) {
 }
 
 #if SIMD_ENABLED == TRUE
+void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t width) {
+  memset(local_hysteresis_template_p, 128, 2 * 480 * sizeof(uint16_t));
+  for (uint16_t i = 0; i < width; i++) {
+    local_hysteresis_template_p[480 - (uint16_t) (M_PI * i/2)] = 192 + (uint16_t) (64 * cos(2 * (i - 480) / width));
+  }
+}
+
 void get_lines(struct image_t *img, uint8_t* band_sum) {
     uint8_t *buffer = img->buf;
     uint8_t bound = 0;
@@ -323,32 +340,41 @@ void add_band_sums(uint8_t* band_sum, uint32_t* green_pixels) {
   *green_pixels = total_sum;
 }
 
-void average_regions_32(uint8_t* band_sum, uint8_t* average_array) {
+void average_regions_32(uint8_t* band_sum, uint8_t* average_array) { // Does not compute the last 8 lines
   uint8x16_t average_16;
-  uint8x16_t average_16_last;
   uint8x16_t current_average = gto.zero_array;
-  for (uint32_t i = 0; i < 504; i++) {
-    uint8x16_t slice = vld1q_u8(&band_sum[i]);
-    current_average = vrhaddq_u8(current_average, slice);
+  for (uint16_t i = 0; i < 504; i++) {
     if (i % 16 == 0 && i != 0) {
       if (i > 30) {
         uint8x16_t average_32 = vrhaddq_u8(average_16, current_average);
         for (uint8_t j = 0; j < 16; j++){
-          average_array[i - 31 + j] = average_32[j];
-        }
-
-        // Last averages
-        if (i == 472) {
-          average_16_last = current_average;
-        }
-        if (i == 503) {
-          uint8x16_t average_32_last = vrhaddq_u8(average_16_last, current_average);
-          for (uint8_t j = 0; j < 16; j++){
-            average_array[i - 31 + j] = average_32_last[j];
-          }
+          average_array[i - 32 + j] = average_32[j];
         }
       }
       average_16 = current_average;
+      current_average = gto.zero_array;
+    }
+    uint8x16_t slice = vld1q_u8(&band_sum[i]);
+    current_average = vrhaddq_u8(current_average, slice);
+  }
+}
+
+void get_direction_simd(uint8_t* average_array, uint16_t* local_hysteresis_template_p,
+                        uint16_t old_direction, uint16_t* new_direction, float* safe_length) {
+  // Initialize
+  new_direction = 0;
+  uint16_t weighted_average_array[480];
+  memset(&weighted_average_array, 0, 480*sizeof(uint16_t));
+
+  for (uint16_t i = 0; i < 480; i++) {
+    // Apply weights
+    uint16_t array_location = i + 480 - old_direction;
+    weighted_average_array[i] = (uint16_t)average_array[i] * local_hysteresis_template_p[array_location];
+
+    // Find maximum
+    if (weighted_average_array[i] > *new_direction) {
+      *new_direction = i; // Set new direction (not the same as heading)
+      *safe_length = average_array[i]; // Set new safe length
     }
   }
 }
@@ -472,6 +498,9 @@ void green_detector_init(void) {
 
     memset(&global_heading_object, 0, sizeof(struct heading_object_t));
     pthread_mutex_init(&mutex, NULL);
+
+    hysteresis_template_p = malloc(2*520*sizeof(uint16_t));
+    set_hysteresis_template(hysteresis_template_p, 70);
 
     #ifdef GREEN_DETECTOR_LUM_MIN
         gd_lum_min = GREEN_DETECTOR_LUM_MIN;

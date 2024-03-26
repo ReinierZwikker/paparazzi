@@ -43,8 +43,8 @@ uint8_t gd_cb_min = 75;
 uint8_t gd_cb_max = 110;
 uint8_t gd_cr_min = 110;
 uint8_t gd_cr_max = 130;
-const uint8_t kernel_size_w = 10;	// Note: Needs to be an integer divider of the input image pixel width 
-const uint8_t kernel_size_h = 20; // Note: Needs to be an integer divider of the input image pixel height
+const uint8_t kernel_size_w = 20;	// Note: Needs to be an integer divider of the input image pixel width 
+const uint8_t kernel_size_h = 10; // Note: Needs to be an integer divider of the input image pixel height
 // NOTE [Aaron]: If we make it such that the number of pixels in the reduced image (after the filter) is divisible by 8, 
 // we could do bitwise boolean allocation to save on memory, but waaay overkill for now
 const float ray_weights[] = {0.1f, 0.5f, 0.85f, 1.0f, 0.85f, 0.5f, 0.1f};
@@ -144,7 +144,7 @@ static void green_filter(struct image_t* original_image, struct image_t* filtere
 			for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
 				for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
 					// Parse depending on even or uneven col nr
-					if ((col+col_in_kernel) % 2 == 0) {
+					if ((col * kernel_size_w + col_in_kernel) % 2 == 0) {
 						// Even col nr
 						yuv_u += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)];      // U
 						yuv_y += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1];  // Y1
@@ -166,17 +166,17 @@ static void green_filter(struct image_t* original_image, struct image_t* filtere
 
 			// Perform limit checks and assign value to filter's pixel
 			if (	(yuv_y >= gd_lum_min) && (yuv_y < gd_lum_max) &&
-						(yuv_u >= gd_cb_min) 	&& (yuv_u < gd_cb_max) && 
+						(yuv_u >= gd_cb_min) 	&& (yuv_u < gd_cb_max)  && 
 						(yuv_v >= gd_cr_min) 	&& (yuv_v < gd_cr_max)) {
 
 				filtered_buffer[row * filtered_image->w + col] = true;
 
         #if PAINT_OVER_IMAGE
-        // Go over all pixels
+        // Go over all pixels in kernel and adjust them color to resemble valid pixels
         for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
           for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
             // Parse depending on even or uneven col nr
-            if ((col+col_in_kernel) % 2 == 0) {
+            if ((col * kernel_size_w + col_in_kernel) % 2 == 0) {
               // Even col nr
               original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)] = 0;      // U
               original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 127;  // Y1
@@ -195,23 +195,6 @@ static void green_filter(struct image_t* original_image, struct image_t* filtere
 			}
 			else {
 				filtered_buffer[row * filtered_image->w + col] = false;
-
-        #if PAINT_OVER_IMAGE
-        // Go over all pixels
-        for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
-          for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
-            // Parse depending on even or uneven col nr
-            if ((col+col_in_kernel) % 2 == 0) {
-              // Even col nr
-              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 64;  // Y1
-            } 
-            else {
-              // Uneven col nr
-              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 64;  // Y2
-            }
-          }
-        }
-        #endif
 			}
 		}
 	}
@@ -241,8 +224,10 @@ void get_direction(struct image_t* original_image, float* best_heading, float* s
 				// Add a count to the number of green pixels
 				*green_pixels += 1;
 
-				// Determine which ray the pixel belongs to
-				float angle = (float) atan2((double) row * kernel_size_h, (double) (col - filtered_image.w / 2) * kernel_size_w);
+				// Determine which ray the pixel belongs to 
+        // NOTE: [Aaron] Can be made more efficient with a lookup table
+				float angle = (float) atan2((double) col * kernel_size_w, (double) (row - filtered_image.h / 2) * kernel_size_h);
+
 				uint8_t err_angle_min_idx = 0;
 				float err_angle_min = 2.0 * M_PI;
 				for (uint8_t i=0; i<7; i++) {
@@ -275,8 +260,8 @@ void get_direction(struct image_t* original_image, float* best_heading, float* s
 	}
 
 	// Assign remaining results
-	*best_heading = ray_angles[best_heading_idx];
-  VERBOSE_PRINT("best heading %d\n", *best_heading);
+	*best_heading = M_PI/2 - ray_angles[best_heading_idx];
+  VERBOSE_PRINT("Best ray angle [deg]: %f\n", *best_heading * 180.0f / M_PI);
 
 	*green_pixels = *green_pixels * kernel_size_w * kernel_size_h;
   // VERBOSE_PRINT("GF: total pixels %d\n", *green_pixels);

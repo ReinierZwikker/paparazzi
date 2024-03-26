@@ -499,7 +499,7 @@ void green_detector_init(void) {
     memset(&global_heading_object, 0, sizeof(struct heading_object_t));
     pthread_mutex_init(&mutex, NULL);
 
-    hysteresis_template_p = malloc(2*520*sizeof(uint16_t));
+    hysteresis_template_p = malloc(2*480*sizeof(uint16_t));
     set_hysteresis_template(hysteresis_template_p, 70);
 
     #ifdef GREEN_DETECTOR_LUM_MIN

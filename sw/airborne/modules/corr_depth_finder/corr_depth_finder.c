@@ -17,7 +17,7 @@
 #define AMOUNT_OF_STEPS 15
 #define AMOUNT_OF_SLICE_STEPS 3210  // 214 * 15
 
-#define SIMD_ENABLED TRUE
+#define SIMD_ENABLED FALSE    ///< Only enable when compiling for ARM Cortex processor!
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
@@ -259,6 +259,9 @@ struct heading_object_t global_corr_heading_object;
 //  uint16_t buffer_origin;
 //};
 
+uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p);
+uint8_t *find_previous_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p);
+
 uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p) {
   uint8_t *img_buf = (uint8_t *) image_p->buf;
 
@@ -289,7 +292,6 @@ uint8_t *find_previous_buf_locations(struct image_t *image_p, uint8_t **local_bu
 
   return img_buf;
 }
-
 
 /*
  * depth_finder_detector
@@ -357,16 +359,16 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
           uint8x16_t current_buf_y_vec, previous_buf_y_vec, current_buf_uv_vec, previous_buf_uv_vec;
           // TODO improve loading
           for (uint32_t buf_x = 0; buf_x < 16; buf_x++) {
-            current_buf_y_vec[buf_x]   = *(current_Y_slice_p   + 2 * buf_x);
-            previous_buf_y_vec[buf_x]  = *(previous_Y_slice_p  + 2 * buf_x);
-            current_buf_uv_vec[buf_x]  = *(current_UV_slice_p  + 2 * buf_x + 2 * *color_shift_p[slice_i * step_i]);
-            previous_buf_uv_vec[buf_x] = *(previous_UV_slice_p + 2 * buf_x);
+            previous_buf_y_vec[buf_x]  = previous_Y_slice_p  + 2 * buf_x;
+            current_buf_y_vec[buf_x]   = current_Y_slice_p   + 2 * buf_x;
+            previous_buf_uv_vec[buf_x] = previous_UV_slice_p + 2 * buf_x;
+            current_buf_uv_vec[buf_x]  = current_UV_slice_p  + 2 * buf_x + 2 * color_shift_p[slice_i * step_i];
           }
           partial_sum = vmlaq_u8(current_buf_y_vec, previous_buf_y_vec, partial_sum);
           partial_sum = vmlaq_u8(current_buf_uv_vec, previous_buf_uv_vec, partial_sum);
         }
         // TODO Improve to HADD
-        for (uint8_t *vec_i = 0; vec_i < 16; vec_i++) {
+        for (uint8_t vec_i = 0; vec_i < 16; vec_i++) {
           correlations[step_i] += (float) partial_sum[vec_i];
         }
 
@@ -377,12 +379,11 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
             uint32_t buffer_offset = 2 * current_image_p->w * y_slice + 2 * x_slice;
             // Y_eval_e
             current_Y_slice_p   = current_buf_locations_p[slice_i * step_i] + buffer_offset + 1;
-            previous_Y_slice_p  = previous_buf_locations_p[slice_i]         + buffer_offset + 1;
             correlations[step_i] += (float) (*current_Y_slice_p * *previous_Y_slice_p);
             // UV
             previous_UV_slice_p = previous_buf_locations_p[slice_i]         + buffer_offset;
             current_UV_slice_p  = current_buf_locations_p[slice_i * step_i] + buffer_offset;
-            correlations[step_i] += (float) (*(current_UV_slice_p + 2 * *color_shift_p[slice_i * step_i])
+            correlations[step_i] += (float) (*(current_UV_slice_p + 2 * color_shift_p[slice_i * step_i])
                     * *previous_UV_slice_p);
           }
         }
@@ -496,9 +497,9 @@ void corr_depth_finder_init(void) {
     for (uint8_t step_i = 0; step_i < AMOUNT_OF_STEPS; step_i++) {
       // Shift color to correct for U and V unevenness
       if ((step_i % 2 == 0 && slice_i % 2 == 0) || (step_i % 2 != 0 && slice_i % 2 != 0)) {
-        *(color_shift_p + slice_i * step_i) = false;
+        color_shift_p[slice_i * step_i] = false;
       } else {
-        *(color_shift_p + slice_i * step_i) = true;
+        color_shift_p[slice_i * step_i] = true;
       }
     }
   }

@@ -16,8 +16,9 @@
 #define AMOUNT_OF_SLICES 214
 #define AMOUNT_OF_STEPS 15
 #define AMOUNT_OF_SLICE_STEPS 3210  // 214 * 15
+#define SLICE_SIZE 16
 
-#define SIMD_ENABLED FALSE    ///< Only enable when compiling for ARM Cortex processor!
+#define SIMD_ENABLED TRUE    ///< Only enable when compiling for ARM Cortex processor!
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
@@ -31,7 +32,7 @@
 #define HEADING_MODE true       ///< Default navigation mode is heading mode
 #endif
 
-#define DEPTHFINDER_VERBOSE TRUE
+#define DEPTHFINDER_VERBOSE FALSE
 
 #define PRINT(string,...) fprintf(stderr, "[corr_depth_finder->%s()] " string,__FUNCTION__ , ##__VA_ARGS__)
 #if DEPTHFINDER_VERBOSE
@@ -41,8 +42,7 @@
 #endif
 
 // SETTINGS
-const uint8_t slice_size = 16;
-const uint8_t slice_extend = slice_size / 2;
+const uint8_t slice_extend = SLICE_SIZE / 2;
 const bool draw = true;
 
 float cdf_max_std;
@@ -263,6 +263,7 @@ uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf
 uint8_t *find_previous_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p);
 
 uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p) {
+  VERBOSE_PRINT("Reconstructing new image buffer pointer array\n");
   uint8_t *img_buf = (uint8_t *) image_p->buf;
 
   for (uint8_t slice_i = 0; slice_i < AMOUNT_OF_SLICES; slice_i++) {
@@ -279,6 +280,7 @@ uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf
 }
 
 uint8_t *find_previous_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p) {
+  VERBOSE_PRINT("Reconstructing saved image buffer pointer array\n");
   uint8_t *img_buf = (uint8_t *) image_p->buf;
 
   for (uint8_t slice_i = 0; slice_i < AMOUNT_OF_SLICES; slice_i++) {
@@ -299,11 +301,11 @@ uint8_t *find_previous_buf_locations(struct image_t *image_p, uint8_t **local_bu
  * @return img
  */
 static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
-  clock_t start = clock();
+
+
 
   uint8_t *current_buf = (uint8_t *) current_image_p->buf;
   uint8_t *previous_buf = (uint8_t *) previous_image.buf;
-
 
   if (current_buf != previous_current_image_buf_p) {
     previous_current_image_buf_p = find_current_buf_locations(current_image_p, current_buf_locations_p);
@@ -311,6 +313,9 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
   if (previous_buf != previous_previous_image_buf_p) {
     previous_previous_image_buf_p = find_previous_buf_locations(&previous_image, previous_buf_locations_p);
   }
+
+  clock_t start = clock();
+
 
   float depths[AMOUNT_OF_SLICES];
   memset(&depths, 0, AMOUNT_OF_SLICES * sizeof(float));
@@ -320,52 +325,51 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
 
   //struct slice_t previous_slice, current_slice;
 
+
   for (uint8_t slice_i = 0; slice_i < AMOUNT_OF_SLICES; slice_i++) {
+
     memset(&correlations, 0.0f, AMOUNT_OF_STEPS * sizeof(float));
     mean = std = 0.0f;
 
-    //previous_slice.x_center = y_eval_locations[slice_i];
-    //previous_slice.y_center = x_eval_locations[slice_i];
+    #if SIMD_ENABLED == TRUE  // === SIMD VARIANT OF THE FUNCTION ===
+      uint8x16_t previous_buf_vec_1[SLICE_SIZE], previous_buf_vec_2[SLICE_SIZE];
+      uint8x16_t previous_buf_vec_1_alt[SLICE_SIZE], previous_buf_vec_2_alt[SLICE_SIZE];
 
-    //previous_slice.buffer_origin =
-    //        (uint16_t)(2 * current_image_p->w * (previous_slice.y_center - (int16_t) slice_extend)
-    //        + 2 * (previous_slice.x_center - (int16_t) slice_extend));
+      for (uint8_t slice_line = 0; slice_line < 16; slice_line++) {
+        uint16_t buffer_offset = 2 * current_image_p->w * slice_line;
+
+        previous_buf_vec_1[slice_line] = vld1q_u8(previous_buf_locations_p[slice_i] + buffer_offset);
+        previous_buf_vec_2[slice_line] = vld1q_u8(previous_buf_locations_p[slice_i] + buffer_offset);
+
+        previous_buf_vec_1_alt[slice_line] = vld1q_u8(previous_buf_locations_p[slice_i] + buffer_offset + 2);
+        previous_buf_vec_2_alt[slice_line] = vld1q_u8(previous_buf_locations_p[slice_i] + buffer_offset + 2);
+      }
+    #endif
 
     for (uint8_t step_i = 0; step_i < AMOUNT_OF_STEPS; step_i++) {
-      //  current_slice.x_center = previous_slice.x_center + (uint32_t)(step_i * y_eval_directions[slice_i]);
-      //  current_slice.y_center = previous_slice.y_center + (uint32_t)(step_i * x_eval_directions[slice_i]);
-
-      // current_slice.buffer_origin =
-      //         (uint16_t)(2 * current_image_p->w * (current_slice.y_center - (int16_t) slice_extend)
-      //         + 2 * (current_slice.x_center - (int16_t) slice_extend));
 
       // Y,UV = color coordinates
       // x,y  = pixel coordinates
-
-      uint8_t *previous_Y_slice_p, *previous_UV_slice_p, *current_Y_slice_p, *current_UV_slice_p;
 
       #if SIMD_ENABLED == TRUE  // === SIMD VARIANT OF THE FUNCTION ===
 
         uint8x16_t partial_sum = vdupq_n_u8(0);
 
-        for (uint8_t slice_line = 0; slice_line < slice_size; slice_line++) {
+        for (uint8_t slice_line = 0; slice_line < SLICE_SIZE; slice_line++) {
 
-          uint8_t *buffer_offset = 2 * current_image_p->w * slice_line;
-          // Y_eval_e
-          previous_Y_slice_p  = previous_buf_locations_p[slice_i]         + buffer_offset + 1;
-          current_Y_slice_p   = current_buf_locations_p[slice_i * step_i] + buffer_offset + 1;
-          previous_UV_slice_p = previous_buf_locations_p[slice_i]         + buffer_offset;
-          current_UV_slice_p  = current_buf_locations_p[slice_i * step_i] + buffer_offset;
-          uint8x16_t current_buf_y_vec, previous_buf_y_vec, current_buf_uv_vec, previous_buf_uv_vec;
-          // TODO improve loading
-          for (uint32_t buf_x = 0; buf_x < 16; buf_x++) {
-            previous_buf_y_vec[buf_x]  = previous_Y_slice_p  + 2 * buf_x;
-            current_buf_y_vec[buf_x]   = current_Y_slice_p   + 2 * buf_x;
-            previous_buf_uv_vec[buf_x] = previous_UV_slice_p + 2 * buf_x;
-            current_buf_uv_vec[buf_x]  = current_UV_slice_p  + 2 * buf_x + 2 * color_shift_p[slice_i * step_i];
+          uint16_t buffer_offset = 2 * current_image_p->w * slice_line;
+
+          uint8x16_t current_buf_vec_1, current_buf_vec_2;
+          current_buf_vec_1  = vld1q_u8(current_buf_locations_p[slice_i * step_i] + buffer_offset);
+          current_buf_vec_2  = vld1q_u8(current_buf_locations_p[slice_i * step_i] + buffer_offset);
+
+          if (color_shift_p[slice_i * step_i]) {
+            partial_sum = vmlaq_u8(current_buf_vec_1, previous_buf_vec_1_alt[slice_line], partial_sum);
+            partial_sum = vmlaq_u8(current_buf_vec_2, previous_buf_vec_2_alt[slice_line], partial_sum);
+          } else {
+            partial_sum = vmlaq_u8(current_buf_vec_1, previous_buf_vec_1[slice_line], partial_sum);
+            partial_sum = vmlaq_u8(current_buf_vec_2, previous_buf_vec_2[slice_line], partial_sum);
           }
-          partial_sum = vmlaq_u8(current_buf_y_vec, previous_buf_y_vec, partial_sum);
-          partial_sum = vmlaq_u8(current_buf_uv_vec, previous_buf_uv_vec, partial_sum);
         }
         // TODO Improve to HADD
         for (uint8_t vec_i = 0; vec_i < 16; vec_i++) {
@@ -374,8 +378,10 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
 
       #else  // === NORMAL VARIANT OF THE FUNCTION ===
 
-        for (uint32_t x_slice = 0; x_slice < slice_size; x_slice++) {
-          for (uint32_t y_slice = 0; y_slice < slice_size; y_slice++) {
+        uint8_t *previous_Y_slice_p, *previous_UV_slice_p, *current_Y_slice_p, *current_UV_slice_p;
+
+        for (uint32_t x_slice = 0; x_slice < SLICE_SIZE; x_slice++) {
+          for (uint32_t y_slice = 0; y_slice < SLICE_SIZE; y_slice++) {
             uint32_t buffer_offset = 2 * current_image_p->w * y_slice + 2 * x_slice;
             // Y_eval_e
             previous_Y_slice_p  = previous_buf_locations_p[slice_i]         + buffer_offset + 1;
@@ -439,6 +445,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
       min_zone_i = zone_i;
     }
   }
+
+
 
   pthread_mutex_lock(&mutex);
   global_corr_heading_object.best_heading = zone_headings[min_zone_i];

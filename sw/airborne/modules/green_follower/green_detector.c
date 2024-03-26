@@ -178,21 +178,26 @@ static struct image_t *green_heading_finder(struct image_t *img)
 
       float new_heading = ((float)new_direction - 240) * 0.004;
 
+
+      pthread_mutex_lock(&mutex);
+      global_heading_object.best_heading = new_heading;
+      global_heading_object.old_direction = new_direction;
+      global_heading_object.safe_length = safe_length;
+      global_heading_object.green_pixels = green_pixels;
+      global_heading_object.updated = true;
     #else
       // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
       apply_threshold(img, &green_pixels, gd_lum_min, gd_lum_max, gd_cb_min, gd_cb_max, gd_cr_min, gd_cr_max);
       // Scan in radials from the centre bottom of the image to find the direction with the most green pixels
       get_direction(img, scan_resolution, &best_heading, &safe_length);
+
+      pthread_mutex_lock(&mutex);
+      global_heading_object.best_heading = best_heading;
+      global_heading_object.safe_length = safe_length;
+      global_heading_object.green_pixels = green_pixels;
+      global_heading_object.updated = true;
     #endif
     clock_t end = clock();
-
-    pthread_mutex_lock(&mutex);
-    global_heading_object.best_heading = new_heading;
-    global_heading_object.old_direction = new_direction;
-    global_heading_object.safe_length = safe_length;
-    global_heading_object.green_pixels = green_pixels;
-    global_heading_object.updated = true;
-
     global_heading_object.cycle_time = (end - start);
     pthread_mutex_unlock(&mutex);
 
@@ -229,7 +234,7 @@ void apply_threshold(struct image_t *img, uint32_t* green_pixels,
                  (*up >= cb_min ) && (*up <= cb_max ) &&
                  (*vp >= cr_min ) && (*vp <= cr_max )){
 
-                //*yp = 255;  // make pixel brighter
+                *yp = 255;  // make pixel brighter
                 local_green_pixels++;
 
             }
@@ -515,6 +520,9 @@ void green_detector_init(void) {
 
     // Initialize the SIMD parameters
     #if SIMD_ENABLED == TRUE
+
+        hysteresis_template_p = malloc(2*480*sizeof(uint16_t));
+        set_hysteresis_template(hysteresis_template_p, 70);
         // Set Threshold arrays
         uint8_t min_thresh_array[16] = {gd_cb_min, gd_lum_min, gd_cr_min, gd_lum_min,
                                         gd_cb_min, gd_lum_min, gd_cr_min, gd_lum_min,

@@ -20,6 +20,8 @@
 #define IMAGE_BOOL 5
 #endif
 
+#define PAINT_OVER_IMAGE TRUE
+
 #ifndef GREENFILTER_FPS
 #define GREENFILTER_FPS 0       ///< Default FPS (zero means run at camera fps)
 #endif
@@ -35,12 +37,12 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 #endif
 
 // Filter Settings
-uint8_t gd_lum_min = 80;
-uint8_t gd_lum_max = 255;
-uint8_t gd_cb_min = 30;
-uint8_t gd_cb_max = 89;
-uint8_t gd_cr_min = 90;
-uint8_t gd_cr_max = 145;
+uint8_t gd_lum_min = 60;
+uint8_t gd_lum_max = 110;
+uint8_t gd_cb_min = 75;
+uint8_t gd_cb_max = 110;
+uint8_t gd_cr_min = 110;
+uint8_t gd_cr_max = 130;
 const uint8_t kernel_size_w = 10;	// Note: Needs to be an integer divider of the input image pixel width 
 const uint8_t kernel_size_h = 20; // Note: Needs to be an integer divider of the input image pixel height
 // NOTE [Aaron]: If we make it such that the number of pixels in the reduced image (after the filter) is divisible by 8, 
@@ -78,7 +80,7 @@ void get_direction(struct image_t* original_image, float* best_heading, float* s
 static struct image_t *green_heading_finder(struct image_t *img) {
 
     float best_heading, safe_length;
-    uint32_t green_pixels;
+    uint32_t green_pixels = 0;
 
 		get_direction(img, &best_heading, &safe_length, &green_pixels);
 
@@ -168,6 +170,24 @@ static void green_filter(struct image_t* original_image, struct image_t* filtere
 						(yuv_v >= gd_cr_min) 	&& (yuv_v < gd_cr_max)) {
 
 				filtered_buffer[row * filtered_image->w + col] = true;
+
+        #if PAINT_OVER_IMAGE
+        // Go over all pixels
+        for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
+          for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
+            // Parse depending on even or uneven col nr
+            if ((col+col_in_kernel) % 2 == 0) {
+              // Even col nr
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 200;  // Y1
+            } 
+            else {
+              // Uneven col nr
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 50;  // Y2
+            }
+          }
+        }
+        #endif
+
 			}
 			else {
 				filtered_buffer[row * filtered_image->w + col] = false;
@@ -219,7 +239,6 @@ void get_direction(struct image_t* original_image, float* best_heading, float* s
 	}
 
 	// Deallocate memory
-	// free_filtered_image(&filtered_image);
   image_free(&filtered_image);
 
 	// Go through ray scores, multiplying by corresponding weights and keep track of ray with highest score
@@ -237,7 +256,7 @@ void get_direction(struct image_t* original_image, float* best_heading, float* s
 	// Assign remaining results
 	*best_heading = ray_angles[best_heading_idx];
 	*green_pixels = *green_pixels * kernel_size_w * kernel_size_h;
-	
+  VERBOSE_PRINT("GF: total pixels %d\n", *green_pixels);
 }
 
 

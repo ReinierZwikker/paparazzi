@@ -207,4 +207,5 @@ tests/results/*
 
 # Dataset
 ./data/datasets
+/data/datasets
 ./tests/mavlab/01_03_2024

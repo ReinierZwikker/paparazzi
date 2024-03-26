@@ -332,12 +332,12 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
     //        + 2 * (previous_slice.x_center - (int16_t) slice_extend));
 
     for (uint8_t step_i = 0; step_i < AMOUNT_OF_STEPS; step_i++) {
-      //current_slice.x_center = previous_slice.x_center + (uint32_t)(step_i * y_eval_directions[slice_i]);
-      //current_slice.y_center = previous_slice.y_center + (uint32_t)(step_i * x_eval_directions[slice_i]);
+      //  current_slice.x_center = previous_slice.x_center + (uint32_t)(step_i * y_eval_directions[slice_i]);
+      //  current_slice.y_center = previous_slice.y_center + (uint32_t)(step_i * x_eval_directions[slice_i]);
 
-      //current_slice.buffer_origin =
-      //        (uint16_t)(2 * current_image_p->w * (current_slice.y_center - (int16_t) slice_extend)
-      //        + 2 * (current_slice.x_center - (int16_t) slice_extend));
+      // current_slice.buffer_origin =
+      //         (uint16_t)(2 * current_image_p->w * (current_slice.y_center - (int16_t) slice_extend)
+      //         + 2 * (current_slice.x_center - (int16_t) slice_extend));
 
       // Y,UV = color coordinates
       // x,y  = pixel coordinates
@@ -352,8 +352,8 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
 
           uint8_t *buffer_offset = 2 * current_image_p->w * slice_line;
           // Y_eval_e
-          current_Y_slice_p   = current_buf_locations_p[slice_i * step_i] + buffer_offset + 1;
           previous_Y_slice_p  = previous_buf_locations_p[slice_i]         + buffer_offset + 1;
+          current_Y_slice_p   = current_buf_locations_p[slice_i * step_i] + buffer_offset + 1;
           previous_UV_slice_p = previous_buf_locations_p[slice_i]         + buffer_offset;
           current_UV_slice_p  = current_buf_locations_p[slice_i * step_i] + buffer_offset;
           uint8x16_t current_buf_y_vec, previous_buf_y_vec, current_buf_uv_vec, previous_buf_uv_vec;
@@ -378,6 +378,7 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
           for (uint32_t y_slice = 0; y_slice < slice_size; y_slice++) {
             uint32_t buffer_offset = 2 * current_image_p->w * y_slice + 2 * x_slice;
             // Y_eval_e
+            previous_Y_slice_p  = previous_buf_locations_p[slice_i]         + buffer_offset + 1;
             current_Y_slice_p   = current_buf_locations_p[slice_i * step_i] + buffer_offset + 1;
             correlations[step_i] += (float) (*current_Y_slice_p * *previous_Y_slice_p);
             // UV

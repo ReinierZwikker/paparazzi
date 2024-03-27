@@ -86,6 +86,8 @@ struct threshold_object_t {
     uint8_t select[8];
     uint8x16_t min_thresh;
     uint8x16_t max_thresh;
+    uint8x16_t min_thresh_2;
+    uint8x16_t max_thresh_2;
 };
 struct threshold_object_t gto;
 #endif
@@ -100,6 +102,9 @@ float get_radial(struct image_t *img, float angle, uint8_t radius);
 void get_direction(struct image_t *img, int resolution, float* best_heading, float* safe_length);
 
 void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t width);
+void test(uint8_t* band_sum);
+void get_regions(struct image_t *img, float* regions);
+uint8x16_t average_block(struct image_t *img, uint32_t location);
 void get_lines(struct image_t *img, uint8_t* band_sum);
 void add_band_sums(uint8_t* band_sum, uint32_t* green_pixel);
 void average_regions_32(uint8_t* band_sum, uint8_t* average_array);
@@ -169,14 +174,18 @@ static struct image_t *green_heading_finder(struct image_t *img)
       memset(&band_sum, 0, 520*sizeof(uint8_t));
       uint8_t average_array[480];
       memset(&average_array, 0, 480*sizeof(uint8_t));
+      float regions[16];
+      memset(&regions, 0, 16*sizeof(int8_t));
 
-      get_lines(img, &band_sum[0]);
-      add_band_sums(&band_sum[0], &green_pixels);
-      average_regions_32(&band_sum[0], &average_array[0]);
-      get_direction_simd(&average_array[0], hysteresis_template_p,
-                         old_direction, &new_direction, &safe_length);
+      test(&band_sum[0]);
+      get_regions(img, &regions[0]);
+//      get_lines(img, &band_sum[0]);
+//      add_band_sums(&band_sum[0], &green_pixels);
+//      average_regions_32(&band_sum[0], &average_array[0]);
+//      get_direction_simd(&average_array[0], hysteresis_template_p,
+//                         old_direction, &new_direction, &safe_length);
 
-      float new_heading = ((float)new_direction - 240) * 0.004;
+      // float new_heading = ((float)new_direction - 240) * 0.004;
 
     #else
       // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
@@ -186,13 +195,13 @@ static struct image_t *green_heading_finder(struct image_t *img)
     #endif
     clock_t end = clock();
 
-      pthread_mutex_lock(&mutex);
-      global_heading_object.best_heading = best_heading;
-      global_heading_object.safe_length = safe_length;
-      global_heading_object.green_pixels = green_pixels;
-      global_heading_object.updated = true;
-    #endif
-    clock_t end = clock();
+    pthread_mutex_lock(&mutex);
+    global_heading_object.best_heading = (float)regions[0];
+    global_heading_object.old_direction = new_direction;
+    global_heading_object.safe_length = (float)regions[1];
+    global_heading_object.green_pixels = (uint32_t)regions[2];
+    global_heading_object.updated = true;
+
     global_heading_object.cycle_time = (end - start);
     pthread_mutex_unlock(&mutex);
 
@@ -270,6 +279,152 @@ void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t wid
   for (uint16_t i = 0; i < width; i++) {
     local_hysteresis_template_p[480 - (uint16_t) (M_PI * i/2)] = 192 + (uint16_t) (64 * cos(2 * (i - 480) / width));
   }
+}
+
+void test (uint8_t* band_sum) {
+  uint8_t test_vector_1[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  uint8_t test_vector_2[16] = {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
+
+  uint8x16_t test_1 = vld1q_u8(test_vector_1);
+  uint8x16_t test_2 = vld1q_u8(test_vector_2);
+
+  uint8x16x2_t test_zip = vzipq_u8(test_1, test_2);
+  uint8x16_t test_half_add = vhaddq_u8(test_zip.val[0], test_zip.val[1]);
+
+  uint8x8_t test_register_low = vget_low_u8(test_half_add);
+  uint8x8_t test_register_high = vget_high_u8(test_half_add);
+  uint8x8_t test_register_av = vhadd_u8(test_register_low, test_register_high);
+
+//  uint8x16_t test_register = vld1q_u8(test_vector);
+//  uint8x16_t test_register_64 = vrev64q_u8(test_register);
+//  uint8x16_t test_register_32 = vrev32q_u8(test_register);
+//  uint8x16_t test_register_av = vhaddq_u8(test_register_64, test_register_32);
+//
+//  uint8x8_t test_register_low = vget_low_u8(test_register_av);
+//  uint8x8_t test_register_high = vget_high_u8(test_register_av);
+//  uint8x8_t test_register_av_8 = vhadd_u8(test_register_low, test_register_high);
+  for (uint8_t i = 0; i < 16; i++) {
+    band_sum[i] = test_register_av[i];
+  }
+}
+
+uint8x16_t average_block(struct image_t *img, uint32_t location) {
+  uint8_t *buffer = img->buf;
+  uint8x16_t averages_1[4];
+  uint8x16_t averages_2[2];
+
+  for (uint8_t row = 0; row < 8; row += 2) {
+    uint8x16_t slice_1 = vld1q_u8(buffer + location + 480 * row);
+    uint8x16_t slice_2 = vld1q_u8(buffer + location + 480 * (row + 1));
+    averages_1[row/2] = vhaddq_u8(slice_1, slice_2);
+  }
+  for (uint8_t row = 0; row < 4; row += 2) {
+    uint8x16_t slice_1 = vld1q_u8(buffer + location + 480 * row);
+    uint8x16_t slice_2 = vld1q_u8(buffer + location + 480 * (row + 1));
+    averages_2[row/2] = vhaddq_u8(slice_1, slice_2);
+  }
+  return vhaddq_u8(averages_2[0], averages_2[1]);
+}
+
+
+void get_regions(struct image_t *img, float* regions) {
+  uint8x8_t first_add_low_array[4];
+  uint8x8_t first_add_high_array[4];
+  uint8x16_t second_add_array[2];
+  uint8x16_t region_array[2];
+
+  uint32_t location_1, location_2;
+
+  for (uint8_t region_id = 0; region_id < 16; region_id++) {
+    for (uint8_t k = 0; k < 2; k++) {
+      uint8x16_t greater_combined = gto.zero_array; // A uint8 vector with 16 values of which every bit represents a y, u or v value
+      uint8x16_t smaller_combined = gto.zero_array; // A uint8 vector with 16 values of which every bit represents a y, u or v value
+      for (uint8_t i = 0; i < 8; i++) {
+        for (uint8_t j = 0; j < 4; j++) {
+          if (i == 1 && j == 3) { // Cut-off the 8th value of the first and second block
+            first_add_low_array[j] = gto.zero_array_8; // Maintain constant average
+            first_add_high_array[j] = gto.zero_array_8; // Maintain constant average
+          } else {
+            if (i == 0 || i == 1 || i == 4 || i == 5){
+              location_1 = 16*j + 64*i - 16*(i/3);
+              location_2 = location_1 + 7*16;
+            } else {
+              location_1 = 16*j + 64*i + 112 - 32*(i/5);
+              location_2 = location_1 + 8*16;
+            }
+
+            // uint8_t test_vector_1[16] = {80, 70, 15, 70, 80, 70, 15, 70, 80, 70, 15, 70, 80, 70, 15, 70};
+            // uint8_t test_vector_2[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+            // Take slices from the image
+            // Starts with arrays in form [u00, y00, v00, y01, u01, y02, v01, y03, ... , y07],
+            //                            [u10, y10, v10, y11, u11, y12, v11, y13, ... , y17], ...
+            uint8x16_t slice_1 = average_block(img, location_1); // Load in a slice
+            uint8x16_t slice_2 = average_block(img, location_2); // Load in a slice 8 addresses further than slice 1
+
+            // Zip and add arrays
+            // Gets array in form [(u00+u02)/2, (u10+u12)/2, (y00+y04)/2, (y10+y14)/2, .. (y115+y137)/2], ...
+            uint8x16x2_t zipped_slices = vzipq_u8(slice_1, slice_2); // Zip the slices together so [a0, b0, a1, b1, ...]
+            uint8x16_t first_add = vhaddq_u8(zipped_slices.val[0],
+                                             zipped_slices.val[1]); // Add the first zip array to the second
+
+            // Separate arrays
+            first_add_low_array[j] = vget_low_u8(first_add); // Get the first 8 bytes of first_add_1
+            first_add_high_array[j] = vget_high_u8(first_add); // Get the last 8 bytes of first_add_1
+          }
+
+          // Start adding
+          if (j == 1) {
+            // Combine and add
+            // Gets array in form [u0_t, u1_t, y0_t, ... y7_t]
+            uint8x16_t first_add_low_comb = vcombine_u8(first_add_low_array[0], first_add_low_array[1]);
+            uint8x16_t first_add_high_comb = vcombine_u8(first_add_high_array[0], first_add_high_array[1]);
+            second_add_array[0] = vhaddq_u8(first_add_low_comb, first_add_high_comb);
+          } else if (j == 3) {
+            // Combine and add
+            // Gets array in form [u0_t, u1_t, y0_t, ... y7_t]
+            uint8x16_t first_add_low_comb = vcombine_u8(first_add_low_array[2], first_add_low_array[3]);
+            uint8x16_t first_add_high_comb = vcombine_u8(first_add_high_array[2], first_add_high_array[3]);
+            second_add_array[1] = vhaddq_u8(first_add_low_comb, first_add_high_comb);
+          }
+        }
+        // Average of 4 windows [u0_av, u1_av, y00_av, y10_av, v0_av, v1_av, y01_av, y11_av, u2_av, ..., y31_av]
+        uint8x16_t third_add_array = vhaddq_u8(second_add_array[0], second_add_array[1]);
+
+        // Threshold
+        uint8x16_t greater = vcgeq_u8(third_add_array, gto.min_thresh_2);
+        uint8x16_t smaller = vcleq_u8(third_add_array, gto.max_thresh_2);
+
+        // Put into bit vector
+        uint8x16_t selection_array = vdupq_n_u8(gto.select[i]); // TODO: initialize this value
+        greater_combined = vbslq_u8(selection_array, greater, greater_combined);
+        smaller_combined = vbslq_u8(selection_array, smaller, smaller_combined);
+      }
+      // Get the bitwise union between the greater_combined and smaller_combined vectors
+      // The result is an array in which every bit represents a y, u or v value. If the bit is 1, the value is within the threshold.
+      uint8x16_t bounded = vandq_u8(greater_combined, smaller_combined);
+
+      // Rotate matrices
+      uint8x16_t reverse_64 = vrev64q_u8(bounded);
+      uint8x16_t reverse_32 = vrev32q_u8(bounded);
+      uint8x16_t reverse_16 = vrev16q_u8(bounded);
+
+      // Check if correct
+      uint8x16_t check_1 = vandq_u8(reverse_64, reverse_32);
+      uint8x16_t check_2 = vandq_u8(reverse_32, reverse_16);
+      uint8x16_t check_3 = vandq_u8(check_1, check_2);
+
+      // Pop count
+      region_array[k] = vcntq_u8(check_3);
+    }
+    // Add together green pixels
+    uint8x16_t first_region_add = vaddq_u8(region_array[0], region_array[1]);
+    uint8x16_t first_region_add_r16 = vrev64q_u8(first_region_add);
+    uint8x16_t sra = vaddq_u8(first_region_add_r16, first_region_add);
+
+    regions[region_id] = (float)(sra[0] + sra[1] + sra[2] + sra[3]);
+  }
+
 }
 
 void get_lines(struct image_t *img, uint8_t* band_sum) {
@@ -531,6 +686,20 @@ void green_detector_init(void) {
 
         gto.min_thresh = vld1q_u8(min_thresh_array);
         gto.max_thresh = vld1q_u8(max_thresh_array);
+
+        // Set second Threshold arrays
+        uint8_t min_thresh_array_2[16] = {gd_cb_min, gd_cb_min, gd_lum_min, gd_lum_min,
+                                          gd_cr_min, gd_cr_min, gd_lum_min, gd_lum_min,
+                                          gd_cb_min, gd_cb_min, gd_lum_min, gd_lum_min,
+                                          gd_cr_min, gd_cr_min, gd_lum_min, gd_lum_min};
+
+        uint8_t max_thresh_array_2[16] = {gd_cb_max, gd_cb_max, gd_lum_max, gd_lum_max,
+                                          gd_cr_max, gd_cr_max, gd_lum_max, gd_lum_max,
+                                          gd_cb_max, gd_cb_max, gd_lum_max, gd_lum_max,
+                                          gd_cr_max, gd_cr_max, gd_lum_max, gd_lum_max};
+
+        gto.min_thresh_2 = vld1q_u8(min_thresh_array_2);
+        gto.max_thresh_2 = vld1q_u8(max_thresh_array_2);
 
         // Set standard arrays
         gto.zero_array = vdupq_n_u8(0);

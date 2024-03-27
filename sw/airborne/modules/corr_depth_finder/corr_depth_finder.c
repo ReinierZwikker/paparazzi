@@ -22,6 +22,7 @@
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
+#define SLICE_SIZE 16 // Needs to be 16 if using SIMD
 #endif
 
 #ifndef DEPTHFINDER_FPS
@@ -353,7 +354,7 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
     #if SIMD_ENABLED == TRUE  // === SIMD VARIANT OF THE FUNCTION ===
       // Four arrays of 16 vectors of each 8 times an uint8 (when slize size = 16)
       // Four arrays are needed because every pixel has a Y and U/V value.
-      // Total dimension is 16x32 uint8's for 16x16 pixels
+      // Total dimension is 16x(4x8) uint8's for 16x32 values for 16x16 pixels
       uint8x8_t previous_buf_vec_1[SLICE_SIZE], previous_buf_vec_2[SLICE_SIZE],
                 previous_buf_vec_3[SLICE_SIZE], previous_buf_vec_4[SLICE_SIZE];
       // The alternate windows are shifted with one pixel, to fix alignment issue
@@ -422,17 +423,20 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
           uint16x4_t multiplied_4_low  =  vget_low_u16(multiplied_4);
           uint16x4_t multiplied_4_high = vget_high_u16(multiplied_4);
 
-          // HADD Tree
+          // HADD Tree step 1
           uint32x4_t added_1 = vaddl_u16(multiplied_1_low,  multiplied_2_low);
           uint32x4_t added_2 = vaddl_u16(multiplied_3_low,  multiplied_4_low);
           uint32x4_t added_3 = vaddl_u16(multiplied_1_high, multiplied_2_high);
           uint32x4_t added_4 = vaddl_u16(multiplied_3_high, multiplied_4_high);
 
+          // HADD Tree step 2
           uint32x4_t added_1 = vaddq_u32(added_1,  added_2);
           uint32x4_t added_2 = vaddq_u32(added_3,  added_4);
 
+          // HADD Tree step 3
           uint32x4_t added_1 = vaddq_u32(added_1,  added_2);
 
+          // Unload from SIMD registers
           for (uint8_t vec_i = 0; vec_i < 4; vec_i++) {
             correlations[step_i] += (float) added_1[vec_i];
           }

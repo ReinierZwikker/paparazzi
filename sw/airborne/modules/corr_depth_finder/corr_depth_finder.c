@@ -18,6 +18,8 @@
 #define AMOUNT_OF_SLICE_STEPS 3210  // 214 * 15
 #define SLICE_SIZE 16
 
+#define AMOUNT_OF_IMAGE_BUFFERS 6
+
 #define SIMD_ENABLED TRUE    ///< Only enable when compiling for ARM Cortex processor!
 
 #if SIMD_ENABLED == TRUE
@@ -232,11 +234,12 @@ static float zone_amount_of_markers[5] = {29, 37, 75, 36, 30};
 struct image_t previous_image;
 
 // Pointer to array of pointers to locations in buffer of image
-uint8_t **current_buf_locations_p;
+uint8_t **current_buf_locations_p[AMOUNT_OF_IMAGE_BUFFERS];
+uint8_t latest_added_buf_i;
 uint8_t **previous_buf_locations_p;
 
 // The previously used pointer to the buffer of the image
-uint8_t *previous_current_image_buf_p;
+uint8_t *previous_current_image_buf_p[AMOUNT_OF_IMAGE_BUFFERS];
 uint8_t *previous_previous_image_buf_p;
 
 // Pointer to array of steps that are not aligned in YUV and need to be shifted
@@ -257,10 +260,10 @@ struct heading_object_t {
 };
 struct heading_object_t global_corr_heading_object;
 
-uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p);
+uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p[AMOUNT_OF_IMAGE_BUFFERS], uint8_t slot);
 uint8_t *find_previous_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p);
 
-uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p) {
+uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf_locations_p[AMOUNT_OF_IMAGE_BUFFERS], uint8_t slot) {
   /* This function saves the pointers to the left top pixels of all
    * necessary windows and steps from these windows of the current
    * image in an array, such that these don't have to be recomputed
@@ -277,7 +280,7 @@ uint8_t *find_current_buf_locations(struct image_t *image_p, uint8_t **local_buf
       uint16_t x_center = y_eval_locations[slice_i] + (uint16_t)(step_i * y_eval_directions[slice_i]);
       uint16_t y_center = x_eval_locations[slice_i] + (uint16_t)(step_i * x_eval_directions[slice_i]);
 
-      local_buf_locations_p[slice_i * step_i] =
+      local_buf_locations_p[slot][slice_i * step_i] =
               img_buf + 2 * image_p->w * (y_center - slice_extend) + 2 * (x_center - slice_extend);
     }
   }
@@ -333,8 +336,24 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
 
   // if the image is at a different spot in the memory compared to last time, search for the new pointers,
   // otherwise assume that all pointers to the pixels are still valid.
-  if (current_buf != previous_current_image_buf_p) {
-    previous_current_image_buf_p = find_current_buf_locations(current_image_p, current_buf_locations_p);
+  uint8_t current_prev_curr_image_buf_i;
+  bool buffer_found = false;
+  for (uint8_t buf_i = 0; buf_i < AMOUNT_OF_IMAGE_BUFFERS; buf_i++) {
+    if (current_buf == previous_current_image_buf_p[buf_i]) {
+      current_prev_curr_image_buf_i = buf_i;
+      buffer_found = true;
+    }
+  }
+
+  if (!buffer_found) {
+    latest_added_buf_i++;
+    if (latest_added_buf_i > AMOUNT_OF_IMAGE_BUFFERS - 1) {
+      latest_added_buf_i = 0;
+    }
+    VERBOSE_PRINT("Adding new buffer in slot %d\n", latest_added_buf_i);
+    previous_current_image_buf_p[latest_added_buf_i] =
+            find_current_buf_locations(current_image_p, current_buf_locations_p, latest_added_buf_i);
+    current_prev_curr_image_buf_i = latest_added_buf_i;
   }
   if (previous_buf != previous_previous_image_buf_p) {
     previous_previous_image_buf_p = find_previous_buf_locations(&previous_image, previous_buf_locations_p);
@@ -393,10 +412,14 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
 
           uint8x8_t current_buf_vec_1, current_buf_vec_2, current_buf_vec_3, current_buf_vec_4;
           // Load 2x16 values from the image buffer.
-          current_buf_vec_1  = vld1_u8(current_buf_locations_p[slice_i * step_i] + buffer_offset);
-          current_buf_vec_2  = vld1_u8(current_buf_locations_p[slice_i * step_i] + buffer_offset + 8);
-          current_buf_vec_3  = vld1_u8(current_buf_locations_p[slice_i * step_i] + buffer_offset + 16);
-          current_buf_vec_4  = vld1_u8(current_buf_locations_p[slice_i * step_i] + buffer_offset + 24);
+          current_buf_vec_1  = vld1_u8(current_buf_locations_p[current_prev_curr_image_buf_i][slice_i * step_i]
+                                                                                                  + buffer_offset);
+          current_buf_vec_2  = vld1_u8(current_buf_locations_p[current_prev_curr_image_buf_i][slice_i * step_i]
+                                                                                                  + buffer_offset + 8);
+          current_buf_vec_3  = vld1_u8(current_buf_locations_p[current_prev_curr_image_buf_i][slice_i * step_i]
+                                                                                                  + buffer_offset + 16);
+          current_buf_vec_4  = vld1_u8(current_buf_locations_p[current_prev_curr_image_buf_i][slice_i * step_i]
+                                                                                                  + buffer_offset + 24);
 
           uint16x8_t multiplied_1, multiplied_2, multiplied_3, multiplied_4;
           // Multiply entire rows of the slices element-wise and widen
@@ -562,8 +585,11 @@ void corr_depth_finder_init(void) {
   cdf_max_std = 0.008;
   cdf_threshold = 0.6f;
 
-  current_buf_locations_p = malloc(AMOUNT_OF_SLICE_STEPS * sizeof(uint8_t*));
+  for (uint8_t buf_i = 0; buf_i < AMOUNT_OF_IMAGE_BUFFERS; buf_i++) {
+    current_buf_locations_p[buf_i] = malloc(AMOUNT_OF_SLICE_STEPS * sizeof(uint8_t *));
+  }
   previous_buf_locations_p = malloc(AMOUNT_OF_STEPS * sizeof(uint8_t*));
+  latest_added_buf_i = 0;
 
   color_shift_p = malloc(AMOUNT_OF_SLICE_STEPS * sizeof(bool));
 
@@ -582,7 +608,9 @@ void corr_depth_finder_init(void) {
 
   pthread_mutex_init(&mutex, NULL);
 
-  previous_current_image_buf_p = NULL;
+  for (uint8_t buf_i = 0; buf_i < AMOUNT_OF_IMAGE_BUFFERS; buf_i++) {
+    previous_current_image_buf_p[buf_i] = NULL;
+  }
   previous_previous_image_buf_p = NULL;
 
   image_create(&previous_image, 240, 520, IMAGE_YUV422);

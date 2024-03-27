@@ -39,7 +39,7 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 #define VERBOSE_PRINT(...)
 #endif
 
-uint16_t *hysteresis_template_p;
+float *hysteresis_template_p;
 
 // TODO Make auto-select based on build target
 #define CYBERZOO_FILTER TRUE
@@ -68,14 +68,19 @@ uint8_t local_cb_max;
 uint8_t local_cr_min;
 uint8_t local_cr_max;
 
+float gain_centre = 0.6;
+float gain_previous_heading = 0.8;
+float hysteresis_width = 5;
+float hysteresis_sides = 0.5;
+
 // Define constants
 float weight_function = 0.85;
 int scan_resolution = 100; // Amount of radials
 clock_t start_cycle_counter = 0; // Start timer for cycles_since_update
 clock_t end_cycle_counter = 0; // End timer for cycles_since_update
 
-const uint8_t kernel_size_w = 20;	// Note: Needs to be an integer divider of the input image pixel width
-const uint8_t kernel_size_h = 10; // Note: Needs to be an integer divider of the input image pixel height
+const uint8_t kernel_size_w = 16;	// Note: Needs to be an integer divider of the input image pixel width
+const uint8_t kernel_size_h = 8; // Note: Needs to be an integer divider of the input image pixel height
 // NOTE [Aaron]: If we make it such that the number of pixels in the reduced image (after the filter) is divisible by 8,
 // we could do bitwise boolean allocation to save on memory, but waaay overkill for now
 const float ray_weights[] = {0.1f, 0.5f, 0.85f, 1.0f, 0.85f, 0.5f, 0.1f};
@@ -120,12 +125,13 @@ void apply_threshold(struct image_t *img, uint32_t *green_pixels,
                      uint8_t cb_min, uint8_t cb_max,
                      uint8_t cr_min, uint8_t cr_max);
 
-void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t width);
+void set_hysteresis_template(float *local_hysteresis_template_p, uint16_t width);
 #if SIMD_ENABLED
 uint8x16_t average_block(struct image_t *img, uint32_t location);
 void get_regions(struct image_t *img, float* regions);
-void get_direction_simd(float* regions, uint16_t* local_hysteresis_template_p,
+void get_direction_simd(float* regions, float* local_hysteresis_template_p,
                         uint16_t old_direction, uint16_t* new_direction, float* safe_length, uint32_t* green_pixels);
+static void green_filter(struct image_t* original_image, struct image_t* filtered_image);
 #else
 void get_direction(struct image_t* original_image, float* best_heading, float* safe_length, uint32_t* green_pixels);
 #endif
@@ -195,6 +201,14 @@ static struct image_t *green_heading_finder(struct image_t *img)
       get_direction_simd(&regions[0], &hysteresis_template_p[0],
                          old_direction, &new_direction, &safe_length, &green_pixels);
 
+      old_direction = new_direction;
+      best_heading = ((float)new_direction - 8.0f) * 0.065;
+
+      // Visualize
+      struct image_t filtered_image;
+      image_create(&filtered_image, img->w / kernel_size_w, img->h / kernel_size_h, IMAGE_BOOL);
+      green_filter(img, &filtered_image);
+      img = &filtered_image;
     #else
       get_direction(img, &best_heading, &safe_length, &green_pixels);
     #endif
@@ -241,8 +255,8 @@ void green_detector_init(void) {
 
   // Initialize the SIMD parameters
 #if SIMD_ENABLED == TRUE
-  hysteresis_template_p = malloc(2*16*sizeof(uint16_t));
-  set_hysteresis_template(hysteresis_template_p, 3);
+  hysteresis_template_p = malloc(2*16*sizeof(float));
+  set_hysteresis_template(hysteresis_template_p, hysteresis_width);
 
   // Set Threshold arrays
   uint8_t min_thresh_array[16] = {gd_cb_min, gd_cb_min, gd_lum_min, gd_lum_min,
@@ -329,11 +343,91 @@ void apply_threshold(struct image_t *img, uint32_t* green_pixels,
     *green_pixels = local_green_pixels;
 }
 
-void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t width) {
+static void green_filter(struct image_t* original_image, struct image_t* filtered_image) {
+
+  uint8_t *original_buffer = original_image->buf;
+  uint8_t *filtered_buffer = filtered_image->buf;
+
+  // Perform mean pooling on the original image
+  for (uint16_t row=0; row<filtered_image->h; row++) {
+    for (uint16_t col=0; col<filtered_image->w; col++) {
+
+      uint32_t yuv_y = 0;
+      uint32_t yuv_u = 0;
+      uint32_t yuv_v = 0;
+
+      // Sum color channels of pixels in the kernel
+      for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
+        for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
+          // Parse depending on even or uneven col nr
+          if ((col * kernel_size_w + col_in_kernel) % 2 == 0) {
+            // Even col nr
+            yuv_u += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)];      // U
+            yuv_y += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1];  // Y1
+            yuv_v += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 2];  // V
+          }
+          else {
+            // Uneven col nr
+            yuv_u += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) - 2];  // U
+            yuv_v += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)];      // V
+            yuv_y += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1];  // Y2
+          }
+        }
+      }
+
+      // Divide by number of pixels in the kernel to get the mean values
+      yuv_y = yuv_y / (kernel_size_w * kernel_size_h);
+      yuv_u = yuv_u / (kernel_size_w * kernel_size_h);
+      yuv_v = yuv_v / (kernel_size_w * kernel_size_h);
+
+      // Perform limit checks and assign value to filter's pixel
+      if (	(yuv_y >= gd_lum_min) && (yuv_y < gd_lum_max) &&
+            (yuv_u >= gd_cb_min) 	&& (yuv_u < gd_cb_max)  &&
+            (yuv_v >= gd_cr_min) 	&& (yuv_v < gd_cr_max)) {
+
+        filtered_buffer[row * filtered_image->w + col] = true;
+
+#if PAINT_OVER_IMAGE_AVERAGED
+        // Go over all pixels in kernel and adjust them color to resemble valid pixels
+        for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
+          for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
+            // Parse depending on even or uneven col nr
+            if ((col * kernel_size_w + col_in_kernel) % 2 == 0) {
+              // Even col nr
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)] = 0;      // U
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 127;  // Y1
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 2] = 0;  // V
+            }
+            else {
+              // Uneven col nr
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) - 2] = 0;  // U
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)] = 0;      // V
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 127;  // Y2
+            }
+          }
+        }
+#endif
+
+      }
+      else {
+        filtered_buffer[row * filtered_image->w + col] = false;
+      }
+    }
+  }
+}
+
+void set_hysteresis_template(float *local_hysteresis_template_p, uint16_t width) {
   // This function creates a weighing function
-  memset(local_hysteresis_template_p, 128, 2 * 16 * sizeof(uint16_t));
+  memset(local_hysteresis_template_p, 0, 2 * 16 * sizeof(float));
+  float amplitude = (1 - hysteresis_sides)/2;
+  float average = 1 - amplitude;
+  for (uint16_t i = 0; i < 16; i++) {
+    local_hysteresis_template_p[i] = hysteresis_sides;
+  }
   for (uint16_t i = 0; i < width; i++) {
-    local_hysteresis_template_p[16 - (uint16_t) (M_PI * i/2)] = 192 + (uint16_t) (64 * cos(2 * (i - 16) / width));
+    // local_hysteresis_template_p[16 - (uint16_t) (M_PI * i/2)] = 0.75 + (uint16_t) (0.25 * cos(2 * (i - 16) / width));
+    uint8_t measure_point = 16 - width/2 + i;
+    local_hysteresis_template_p[measure_point] = average + (amplitude * cos(4 * ((float)measure_point - 16) / (float)width));
   }
 }
 
@@ -456,104 +550,36 @@ void get_regions(struct image_t *img, float* regions) {
   }
 }
 
-void get_direction_simd(float* regions, uint16_t* local_hysteresis_template_p,
+void get_direction_simd(float* regions, float* local_hysteresis_template_p,
                         uint16_t old_direction, uint16_t* new_direction, float* safe_length, uint32_t* green_pixels) {
   // Calculates the direction the drone should go using the weighing function and regions
   uint16_t local_new_direction = 0;
   uint32_t local_green_pixels = 0;
-
-  float weighted_average_array[16];
-  memset(&weighted_average_array, 0, 16*sizeof(float));
+  float weighted_regions[16];
+  float local_safe_length = 0;
 
   for (uint16_t i = 0; i < 16; i++) {
     // Apply weights
     uint16_t array_location = i + 16 - old_direction;
-    // weighted_average_array[i] = (uint16_t)average_array[i] * local_hysteresis_template_p[array_location];
-    local_green_pixels = 0;
+    float average_weighting = (gain_previous_heading * local_hysteresis_template_p[array_location] +
+                               gain_centre * local_hysteresis_template_p[i + 8]) / (gain_previous_heading + gain_centre);
+    weighted_regions[i] = (regions[i] * average_weighting);
+
+    // Count up all the green pixels
+    local_green_pixels += (uint32_t)regions[i];
 
     // Find maximum
-    if (weighted_average_array[i] > *new_direction) {
-      *new_direction = i; // Set new direction (not the same as heading)
-      *safe_length = regions[i]; // Set new safe length
+    if (weighted_regions[i] > weighted_regions[local_new_direction]) {
+      local_new_direction = i; // Set new direction (not the same as heading)
+      local_safe_length = regions[i]; // Set new safe length
     }
   }
+  *new_direction = local_new_direction;
+  *safe_length = local_safe_length;
+  *green_pixels = local_green_pixels * 60; // 60 to make it comparable to the old green follower!!
 }
 
 #else
-static void green_filter(struct image_t* original_image, struct image_t* filtered_image) {
-
-	uint8_t *original_buffer = original_image->buf;
-  uint8_t *filtered_buffer = filtered_image->buf;
-
-	// Perform mean pooling on the original image
-	for (uint16_t row=0; row<filtered_image->h; row++) {
-		for (uint16_t col=0; col<filtered_image->w; col++) {
-
-			uint32_t yuv_y = 0;
-			uint32_t yuv_u = 0;
-			uint32_t yuv_v = 0;
-
-			// Sum color channels of pixels in the kernel
-			for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
-				for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
-					// Parse depending on even or uneven col nr
-					if ((col * kernel_size_w + col_in_kernel) % 2 == 0) {
-						// Even col nr
-						yuv_u += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)];      // U
-						yuv_y += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1];  // Y1
-						yuv_v += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 2];  // V
-					}
-					else {
-						// Uneven col nr
-						yuv_u += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) - 2];  // U
-						yuv_v += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)];      // V
-						yuv_y += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1];  // Y2
-					}
-				}
-			}
-
-			// Divide by number of pixels in the kernel to get the mean values
-			yuv_y = yuv_y / (kernel_size_w * kernel_size_h);
-			yuv_u = yuv_u / (kernel_size_w * kernel_size_h);
-			yuv_v = yuv_v / (kernel_size_w * kernel_size_h);
-
-			// Perform limit checks and assign value to filter's pixel
-			if (	(yuv_y >= gd_lum_min) && (yuv_y < gd_lum_max) &&
-						(yuv_u >= gd_cb_min) 	&& (yuv_u < gd_cb_max)  &&
-						(yuv_v >= gd_cr_min) 	&& (yuv_v < gd_cr_max)) {
-
-				filtered_buffer[row * filtered_image->w + col] = true;
-
-        #if PAINT_OVER_IMAGE_AVERAGED
-        // Go over all pixels in kernel and adjust them color to resemble valid pixels
-        for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
-          for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
-            // Parse depending on even or uneven col nr
-            if ((col * kernel_size_w + col_in_kernel) % 2 == 0) {
-              // Even col nr
-              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)] = 0;      // U
-              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 127;  // Y1
-              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 2] = 0;  // V
-            }
-            else {
-              // Uneven col nr
-              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) - 2] = 0;  // U
-              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)] = 0;      // V
-              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 127;  // Y2
-            }
-          }
-        }
-        #endif
-
-			}
-			else {
-				filtered_buffer[row * filtered_image->w + col] = false;
-			}
-		}
-	}
-}
-
-
 void get_direction(struct image_t* original_image, float* best_heading, float* safe_length, uint32_t* green_pixels) {
 
 	// Array where ray scores will be added

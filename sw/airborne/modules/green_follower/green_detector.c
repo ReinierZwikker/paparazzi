@@ -10,6 +10,15 @@
 #include <math.h>
 #include "pthread.h"
 
+#ifndef IMAGE_BOOL
+#define IMAGE_BOOL 5
+#endif
+
+// Only one should be active at a time!!
+#define PAINT_OVER_IMAGE_NORMAL FALSE
+#define PAINT_OVER_IMAGE_AVERAGED TRUE
+
+// Enables vector optimization
 #define SIMD_ENABLED TRUE
 
 #if SIMD_ENABLED == TRUE
@@ -59,11 +68,26 @@ uint8_t local_cb_max;
 uint8_t local_cr_min;
 uint8_t local_cr_max;
 
+// Define constants
 float weight_function = 0.85;
-
 int scan_resolution = 100; // Amount of radials
 clock_t start_cycle_counter = 0; // Start timer for cycles_since_update
 clock_t end_cycle_counter = 0; // End timer for cycles_since_update
+
+const uint8_t kernel_size_w = 20;	// Note: Needs to be an integer divider of the input image pixel width
+const uint8_t kernel_size_h = 10; // Note: Needs to be an integer divider of the input image pixel height
+// NOTE [Aaron]: If we make it such that the number of pixels in the reduced image (after the filter) is divisible by 8,
+// we could do bitwise boolean allocation to save on memory, but waaay overkill for now
+const float ray_weights[] = {0.1f, 0.5f, 0.85f, 1.0f, 0.85f, 0.5f, 0.1f};
+
+const float ray_angles[] = {M_PI/6.0f,
+                            M_PI/6.0f + 			 M_PI/9.0f,
+                            M_PI/6.0f + 2.0f * M_PI/9.0f,
+                            M_PI/6.0f + 3.0f * M_PI/9.0f,
+                            M_PI/6.0f + 4.0f * M_PI/9.0f,
+                            M_PI/6.0f + 5.0f * M_PI/9.0f,
+                            M_PI/6.0f + 6.0f * M_PI/9.0f};
+
 static pthread_mutex_t mutex;
 
 // Struct with relevant information for the navigation
@@ -79,6 +103,7 @@ struct heading_object_t {
 struct heading_object_t global_heading_object;
 
 #if SIMD_ENABLED == TRUE
+// Struct with relevant information for SIMD Thresholding
 struct threshold_object_t {
     uint8x16_t zero_array;
     uint8x8_t zero_array_8;
@@ -86,8 +111,6 @@ struct threshold_object_t {
     uint8_t select[8];
     uint8x16_t min_thresh;
     uint8x16_t max_thresh;
-    uint8x16_t min_thresh_2;
-    uint8x16_t max_thresh_2;
 };
 struct threshold_object_t gto;
 #endif
@@ -97,19 +120,15 @@ void apply_threshold(struct image_t *img, uint32_t *green_pixels,
                      uint8_t cb_min, uint8_t cb_max,
                      uint8_t cr_min, uint8_t cr_max);
 
-float get_radial(struct image_t *img, float angle, uint8_t radius);
-
-void get_direction(struct image_t *img, int resolution, float* best_heading, float* safe_length);
-
 void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t width);
-void test(uint8_t* band_sum);
+#if SIMD_ENABLED
 void get_regions(struct image_t *img, float* regions);
 uint8x16_t average_block(struct image_t *img, uint32_t location);
-void get_lines(struct image_t *img, uint8_t* band_sum);
-void add_band_sums(uint8_t* band_sum, uint32_t* green_pixel);
-void average_regions_32(uint8_t* band_sum, uint8_t* average_array);
 void get_direction_simd(uint8_t* average_array, uint16_t* local_hysteresis_template_p,
                         uint16_t old_direction, uint16_t* new_direction, float* safe_length);
+#else
+void get_direction(struct image_t* original_image, float* best_heading, float* safe_length, uint32_t* green_pixels);
+#endif
 
 // Create telemetry message
 static void send_green_follower(struct transport_tx *trans, struct link_device *dev) {
@@ -137,9 +156,12 @@ static struct image_t *green_heading_finder(struct image_t *img)
     float best_heading, safe_length;
 
     uint32_t green_pixels;
+    uint16_t old_direction = global_heading_object.old_direction;
+    uint16_t new_direction = 0;
 
     clock_t start = clock();
     #if SIMD_ENABLED == TRUE
+      // Update threshold arrays, when thresholds change
       if (local_lum_min + local_lum_max + local_cb_min +
           local_cb_max + local_cr_min + local_cr_max !=
           gd_lum_min + gd_lum_max + gd_cb_min + gd_cb_max + gd_cr_min + gd_cr_max) {
@@ -151,55 +173,40 @@ static struct image_t *green_heading_finder(struct image_t *img)
         local_cr_min = gd_cr_min;
         local_cr_max = gd_cr_max;
 
-
-        uint8_t min_thresh_array[16] = {local_cb_min, local_lum_min, local_cr_min, local_lum_min,
-                                        local_cb_min, local_lum_min, local_cr_min, local_lum_min,
-                                        local_cb_min, local_lum_min, local_cr_min, local_lum_min,
-                                        local_cb_min, local_lum_min, local_cr_min, local_lum_min};
+        uint8_t min_thresh_array[16] = {local_cb_min, local_cb_min, local_lum_min, local_lum_min,
+                                        local_cr_min, local_cr_min, local_lum_min, local_lum_min,
+                                        local_cb_min, local_cb_min, local_lum_min, local_lum_min,
+                                        local_cr_min, local_cr_min, local_lum_min, local_lum_min};
         uint8_t *min_thresh_pointer = min_thresh_array;
-        uint8_t max_thresh_array[16] = {local_cb_max, local_lum_max, local_cr_max, local_lum_max,
-                                        local_cb_max, local_lum_max, local_cr_max, local_lum_max,
-                                        local_cb_max, local_lum_max, local_cr_max, local_lum_max,
-                                        local_cb_max, local_lum_max, local_cr_max, local_lum_max};
+        uint8_t max_thresh_array[16] = {local_cb_max, local_cb_max, local_lum_max, local_lum_max,
+                                        local_cr_max, local_cr_max, local_lum_max, local_lum_max,
+                                        local_cb_max, local_cb_max, local_lum_max, local_lum_max,
+                                        local_cr_max, local_cr_max, local_lum_max, local_lum_max};
         uint8_t *max_thresh_pointer = max_thresh_array;
 
         gto.min_thresh = vld1q_u8(min_thresh_pointer);
         gto.max_thresh = vld1q_u8(max_thresh_pointer);
       }
 
-      uint16_t old_direction = global_heading_object.old_direction;
-      uint16_t new_direction = 0;
-
       uint8_t band_sum[520];
       memset(&band_sum, 0, 520*sizeof(uint8_t));
       uint8_t average_array[480];
       memset(&average_array, 0, 480*sizeof(uint8_t));
       float regions[16];
-      memset(&regions, 0, 16*sizeof(int8_t));
+      memset(&regions, 0, 16*sizeof(float));
 
-      test(&band_sum[0]);
       get_regions(img, &regions[0]);
-//      get_lines(img, &band_sum[0]);
-//      add_band_sums(&band_sum[0], &green_pixels);
-//      average_regions_32(&band_sum[0], &average_array[0]);
-//      get_direction_simd(&average_array[0], hysteresis_template_p,
-//                         old_direction, &new_direction, &safe_length);
 
-      // float new_heading = ((float)new_direction - 240) * 0.004;
-      apply_threshold(img, &green_pixels, gd_lum_min, gd_lum_max, gd_cb_min, gd_cb_max, gd_cr_min, gd_cr_max);
     #else
-      // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
-      apply_threshold(img, &green_pixels, gd_lum_min, gd_lum_max, gd_cb_min, gd_cb_max, gd_cr_min, gd_cr_max);
-      // Scan in radials from the centre bottom of the image to find the direction with the most green pixels
-      get_direction(img, scan_resolution, &best_heading, &safe_length);
+      get_direction(img, &best_heading, &safe_length, &green_pixels);
     #endif
     clock_t end = clock();
 
     pthread_mutex_lock(&mutex);
-    global_heading_object.best_heading = (float)regions[0];
+    global_heading_object.best_heading = best_heading;
     global_heading_object.old_direction = new_direction;
-    global_heading_object.safe_length = (float)regions[1];
-    global_heading_object.green_pixels = (uint32_t)regions[2];
+    global_heading_object.safe_length = safe_length;
+    global_heading_object.green_pixels = green_pixels;
     global_heading_object.updated = true;
 
     global_heading_object.cycle_time = (end - start);
@@ -208,6 +215,86 @@ static struct image_t *green_heading_finder(struct image_t *img)
     return img;
 }
 
+/*
+ * Init and Periodic code
+ */
+struct image_t *green_heading_finder1(struct image_t *img, uint8_t camera_id);
+struct image_t *green_heading_finder1(struct image_t *img, uint8_t camera_id __attribute__((unused)))
+{
+  return green_heading_finder(img);
+}
+
+void green_detector_init(void) {
+  register_periodic_telemetry(DefaultPeriodic, PPRZ_MSG_ID_GREEN_FOLLOWER, send_green_follower);
+
+  memset(&global_heading_object, 0, sizeof(struct heading_object_t));
+  pthread_mutex_init(&mutex, NULL);
+
+  hysteresis_template_p = malloc(2*480*sizeof(uint16_t));
+  set_hysteresis_template(hysteresis_template_p, 70);
+
+#ifdef GREEN_DETECTOR_LUM_MIN
+  gd_lum_min = GREEN_DETECTOR_LUM_MIN;
+        gd_lum_max = GREEN_DETECTOR_LUM_MAX;
+        gd_cb_min = GREEN_DETECTOR_CB_MIN;
+        gd_cb_max = GREEN_DETECTOR_CB_MAX;
+        gd_cr_min = GREEN_DETECTOR_CR_MIN;
+        gd_cr_max = GREEN_DETECTOR_CR_MAX;
+#endif
+
+  cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
+
+  // Initialize the SIMD parameters
+#if SIMD_ENABLED == TRUE
+  hysteresis_template_p = malloc(2*480*sizeof(uint16_t));
+  set_hysteresis_template(hysteresis_template_p, 70);
+
+  // Set Threshold arrays
+  uint8_t min_thresh_array[16] = {gd_cb_min, gd_cb_min, gd_lum_min, gd_lum_min,
+                                  gd_cr_min, gd_cr_min, gd_lum_min, gd_lum_min,
+                                  gd_cb_min, gd_cb_min, gd_lum_min, gd_lum_min,
+                                  gd_cr_min, gd_cr_min, gd_lum_min, gd_lum_min};
+
+  uint8_t max_thresh_array[16] = {gd_cb_max, gd_cb_max, gd_lum_max, gd_lum_max,
+                                  gd_cr_max, gd_cr_max, gd_lum_max, gd_lum_max,
+                                  gd_cb_max, gd_cb_max, gd_lum_max, gd_lum_max,
+                                  gd_cr_max, gd_cr_max, gd_lum_max, gd_lum_max};
+
+  gto.min_thresh = vld1q_u8(min_thresh_array);
+  gto.max_thresh = vld1q_u8(max_thresh_array);
+
+  // Set standard arrays
+  gto.zero_array = vdupq_n_u8(0);
+  gto.zero_array_8 = vdup_n_u8(0);
+  gto.one_array = vdupq_n_u8(1);
+
+  // Set selector to powers of 2 (so 1, 2, 4, 8, etc.) which in binary matches the right bits.
+  for (int i = 0; i < 8; i++) {
+    gto.select[i] = pow(2, i);
+  }
+#endif
+}
+
+void green_detector_periodic(void) {
+  static struct heading_object_t local_heading_object;
+  pthread_mutex_lock(&mutex);
+  memcpy(&local_heading_object, &global_heading_object, sizeof(struct heading_object_t));
+  pthread_mutex_unlock(&mutex);
+
+  if(local_heading_object.updated){
+    end_cycle_counter = clock();
+    AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_heading_object.best_heading, local_heading_object.safe_length, local_heading_object.green_pixels);
+    local_heading_object.updated = false;
+
+    global_heading_object.cycles_since_update = (end_cycle_counter - start_cycle_counter);
+    start_cycle_counter = clock();
+  }
+}
+
+/*
+ * Thresholding code for if the green pixels should be drawn on the image
+ * Also returns total amount of green pixels
+ */
 void apply_threshold(struct image_t *img, uint32_t* green_pixels,
                      uint8_t lum_min, uint8_t lum_max,
                      uint8_t cb_min, uint8_t cb_max,
@@ -242,74 +329,22 @@ void apply_threshold(struct image_t *img, uint32_t* green_pixels,
                 local_green_pixels++;
 
             }
-            else {
-                // *yp = 0; // make pixel darker
-            }
-
-            //if (y == (img->h)/2+2*x || y == (img->h)/2-2*x){
-            //*yp = 0; // make pixel red
-            //*up = 0;
-            //*vp = 255;
-            //}
         }
     }
     *green_pixels = local_green_pixels;
 }
 
-float get_radial(struct image_t *img, float angle, uint8_t radius) {
-    uint8_t *buffer = img->buf;
-
-    uint32_t sum = 0;
-    uint16_t x, y;
-
-    for (double i = 0; i < radius; i++) {
-        y = (uint16_t)((double)img->h/2 + i * cos(angle));
-        x = (uint16_t)(i * sin(angle));
-        if (buffer[y * 2 * img->w + 2 * x + 1] == 255) {
-            sum += 1;
-        }
-    }
-
-    return (float)sum; // * (sin(angle) + 0.2) ;
-}
-
-#if SIMD_ENABLED == TRUE
 void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t width) {
+  // This function creates a weighing function
   memset(local_hysteresis_template_p, 128, 2 * 480 * sizeof(uint16_t));
   for (uint16_t i = 0; i < width; i++) {
     local_hysteresis_template_p[480 - (uint16_t) (M_PI * i/2)] = 192 + (uint16_t) (64 * cos(2 * (i - 480) / width));
   }
 }
 
-void test (uint8_t* band_sum) {
-  uint8_t test_vector_1[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
-  uint8_t test_vector_2[16] = {16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
-
-  uint8x16_t test_1 = vld1q_u8(test_vector_1);
-  uint8x16_t test_2 = vld1q_u8(test_vector_2);
-
-  uint8x16x2_t test_zip = vzipq_u8(test_1, test_2);
-  uint8x16_t test_half_add = vhaddq_u8(test_zip.val[0], test_zip.val[1]);
-
-  uint8x8_t test_register_low = vget_low_u8(test_half_add);
-  uint8x8_t test_register_high = vget_high_u8(test_half_add);
-  uint8x8_t test_register_av = vhadd_u8(test_register_low, test_register_high);
-
-//  uint8x16_t test_register = vld1q_u8(test_vector);
-//  uint8x16_t test_register_64 = vrev64q_u8(test_register);
-//  uint8x16_t test_register_32 = vrev32q_u8(test_register);
-//  uint8x16_t test_register_av = vhaddq_u8(test_register_64, test_register_32);
-//
-//  uint8x8_t test_register_low = vget_low_u8(test_register_av);
-//  uint8x8_t test_register_high = vget_high_u8(test_register_av);
-//  uint8x8_t test_register_av_8 = vhadd_u8(test_register_low, test_register_high);
-  for (uint8_t i = 0; i < 16; i++) {
-    band_sum[i] = test_register_av[i];
-  }
-}
-
+#if SIMD_ENABLED == TRUE
 uint8x16_t average_block(struct image_t *img, uint32_t location) {
-  // 8x8 pixel average
+  // This function computes a 8x8 pixel average
   uint8_t *buffer = img->buf;
   uint8x16_t averages_1[4];
   uint8x16_t averages_2[2];
@@ -325,8 +360,8 @@ uint8x16_t average_block(struct image_t *img, uint32_t location) {
   return vhaddq_u8(averages_2[0], averages_2[1]);
 }
 
-
 void get_regions(struct image_t *img, float* regions) {
+  // This function gets 16 regions from the image and counts the amount of averaged green pixels within these regions
   uint8x8_t first_add_low_array[4];
   uint8x8_t first_add_high_array[4];
   uint8x16_t second_add_array[2];
@@ -392,8 +427,8 @@ void get_regions(struct image_t *img, float* regions) {
         uint8x16_t third_add_array = vhaddq_u8(second_add_array[0], second_add_array[1]);
 
         // Threshold
-        uint8x16_t greater = vcgeq_u8(third_add_array, gto.min_thresh_2);
-        uint8x16_t smaller = vcleq_u8(third_add_array, gto.max_thresh_2);
+        uint8x16_t greater = vcgeq_u8(third_add_array, gto.min_thresh);
+        uint8x16_t smaller = vcleq_u8(third_add_array, gto.max_thresh);
 
         // Put into bit vector
         uint8x16_t selection_array = vdupq_n_u8(gto.select[i]); // TODO: initialize this value
@@ -426,96 +461,9 @@ void get_regions(struct image_t *img, float* regions) {
   }
 }
 
-void get_lines(struct image_t *img, uint8_t* band_sum) {
-    uint8_t *buffer = img->buf;
-    uint8_t bound = 0;
-
-    for (uint16_t y = 0; y < 520; y++) {
-        bound = 0;
-        for (uint8_t i = 0; i < 4; i++) {
-            uint8x16_t greater_combined = gto.zero_array; // A uint8 vector with 16 values of which every bit represents a y, u or v value
-            uint8x16_t smaller_combined = gto.zero_array; // A uint8 vector with 16 values of which every bit represents a y, u or v value
-
-            // In the last loop only 6 sliced should be added for summation to round nicely to 240
-            if (i == 3) {
-              bound = 2;
-            }
-
-            for (uint8_t j = 0; j < (8 - bound); j++) {
-              // Get a slice from the image buffer
-                uint8x16_t slice = vld1q_u8(buffer + j * 16 + i * 128 + y * 480);
-
-                // Get the bounds
-                uint8x16_t greater = vcgeq_u8(slice, gto.min_thresh); // Sets all YUV values greater than min thresh to 1
-                uint8x16_t smaller = vcleq_u8(slice, gto.max_thresh); // Sets all YUV values smaller than max thresh to 1
-
-              // Combine the boolean integers into one integer to be more efficient
-              uint8x16_t selection_array = vdupq_n_u8(gto.select[j]); // TODO: initialize this value
-              greater_combined = vbslq_u8(selection_array, greater, greater_combined);
-              smaller_combined = vbslq_u8(selection_array, smaller, smaller_combined);
-            }
-            // Get the bitwise union between the greater_combined and smaller_combined vectors
-            // The result is an array in which every bit represents a y, u or v value. If the bit is 1, the value is within the threshold.
-            uint8x16_t bounded = vandq_u8(greater_combined, smaller_combined);
-
-            // Set last value to zero, to make sure iterations fit nicely in 240
-            // bounded = vsetq_lane_u8(0, bounded, 15);
-
-            // Naar links!
-            uint8x16_t shifted_l = vld1q_u8(&bounded[1]);
-            uint8x16_t first_sum = vandq_u8(bounded, shifted_l);
-
-            // Tuh tuh tuh tuh
-            uint8x16_t shifted_ll = vld1q_u8(&shifted_l[1]);
-            uint8x16_t even_sum = vandq_u8(first_sum, shifted_ll);
-            uint8x16_t even_pop = vcntq_u8(even_sum);
-
-            // Naar rechts!
-            uint8x16_t shifted_rr = vld1q_u8(&bounded[-2]);
-            uint8x16_t uneven_sum = vandq_u8(first_sum, shifted_rr);
-            uint8x16_t uneven_pop = vcntq_u8(uneven_sum);
-
-            // Sum the even and uneven parts
-            uint8x16_t uneven_pop_ll = vld1q_u8(&uneven_pop[2]);
-            uint8x16_t sum_pop = vaddq_u8(even_pop, uneven_pop_ll);
-
-            // Retrieve the sum
-            band_sum[y] += (uint32_t)sum_pop[0] + (uint32_t)sum_pop[4] + (uint32_t)sum_pop[8] + (uint32_t)sum_pop[12];
-        }
-    }
-}
-
-void add_band_sums(uint8_t* band_sum, uint32_t* green_pixels) {
-  uint32_t total_sum = 0;
-  for (uint16_t i = 0; i < 520; i++) {
-    total_sum += (uint32_t)band_sum[i];
-  }
-
-  *green_pixels = total_sum;
-}
-
-void average_regions_32(uint8_t* band_sum, uint8_t* average_array) { // Does not compute the last 8 lines
-  uint8x16_t average_16;
-  uint8x16_t current_average = gto.zero_array;
-  for (uint16_t i = 0; i < 504; i++) {
-    if (i % 16 == 0 && i != 0) {
-      if (i > 30) {
-        uint8x16_t average_32 = vrhaddq_u8(average_16, current_average);
-        for (uint8_t j = 0; j < 16; j++){
-          average_array[i - 32 + j] = average_32[j];
-        }
-      }
-      average_16 = current_average;
-      current_average = gto.zero_array;
-    }
-    uint8x16_t slice = vld1q_u8(&band_sum[i]);
-    current_average = vrhaddq_u8(current_average, slice);
-  }
-}
-
 void get_direction_simd(uint8_t* average_array, uint16_t* local_hysteresis_template_p,
                         uint16_t old_direction, uint16_t* new_direction, float* safe_length) {
-  // Initialize
+  // Calculates the direction the drone should go using the weighing function and regions
   new_direction = 0;
   uint16_t weighted_average_array[480];
   memset(&weighted_average_array, 0, 480*sizeof(uint16_t));
@@ -533,197 +481,144 @@ void get_direction_simd(uint8_t* average_array, uint16_t* local_hysteresis_templ
   }
 }
 
+#else
+static void green_filter(struct image_t* original_image, struct image_t* filtered_image) {
+
+	uint8_t *original_buffer = original_image->buf;
+  uint8_t *filtered_buffer = filtered_image->buf;
+
+	// Perform mean pooling on the original image
+	for (uint16_t row=0; row<filtered_image->h; row++) {
+		for (uint16_t col=0; col<filtered_image->w; col++) {
+
+			uint32_t yuv_y = 0;
+			uint32_t yuv_u = 0;
+			uint32_t yuv_v = 0;
+
+			// Sum color channels of pixels in the kernel
+			for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
+				for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
+					// Parse depending on even or uneven col nr
+					if ((col * kernel_size_w + col_in_kernel) % 2 == 0) {
+						// Even col nr
+						yuv_u += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)];      // U
+						yuv_y += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1];  // Y1
+						yuv_v += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 2];  // V
+					}
+					else {
+						// Uneven col nr
+						yuv_u += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) - 2];  // U
+						yuv_v += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)];      // V
+						yuv_y += original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1];  // Y2
+					}
+				}
+			}
+
+			// Divide by number of pixels in the kernel to get the mean values
+			yuv_y = yuv_y / (kernel_size_w * kernel_size_h);
+			yuv_u = yuv_u / (kernel_size_w * kernel_size_h);
+			yuv_v = yuv_v / (kernel_size_w * kernel_size_h);
+
+			// Perform limit checks and assign value to filter's pixel
+			if (	(yuv_y >= gd_lum_min) && (yuv_y < gd_lum_max) &&
+						(yuv_u >= gd_cb_min) 	&& (yuv_u < gd_cb_max)  &&
+						(yuv_v >= gd_cr_min) 	&& (yuv_v < gd_cr_max)) {
+
+				filtered_buffer[row * filtered_image->w + col] = true;
+
+        #if PAINT_OVER_IMAGE_AVERAGED
+        // Go over all pixels in kernel and adjust them color to resemble valid pixels
+        for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
+          for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
+            // Parse depending on even or uneven col nr
+            if ((col * kernel_size_w + col_in_kernel) % 2 == 0) {
+              // Even col nr
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)] = 0;      // U
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 127;  // Y1
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 2] = 0;  // V
+            }
+            else {
+              // Uneven col nr
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) - 2] = 0;  // U
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel)] = 0;      // V
+              original_buffer[(row * kernel_size_h + row_in_kernel) * 2 * original_image->w + 2 * (col * kernel_size_w + col_in_kernel) + 1] = 127;  // Y2
+            }
+          }
+        }
+        #endif
+
+			}
+			else {
+				filtered_buffer[row * filtered_image->w + col] = false;
+			}
+		}
+	}
+}
+
+
+void get_direction(struct image_t* original_image, float* best_heading, float* safe_length, uint32_t* green_pixels) {
+
+	// Array where ray scores will be added
+	float ray_scores[7] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+	// Array which will contain the filtered image
+  struct image_t filtered_image;
+  image_create(&filtered_image, original_image->w / kernel_size_w, original_image->h / kernel_size_h, IMAGE_BOOL);
+  // Ptr to the filtered buffer
+  uint8_t *filtered_buffer = &(filtered_image.buf);
+
+	// Apply filter to original image
+	green_filter(original_image, &filtered_image);
+
+	// Go through each pixel in the filtered image
+	// and determine which ray it belongs to
+	for (uint16_t row=0; row<filtered_image.h; row++) {
+		for (uint16_t col=0; col<filtered_image.w; col++) {
+			if (filtered_buffer[row * filtered_image.w + col] == true) {
+
+				// Add a count to the number of green pixels
+				*green_pixels += 1;
+
+				// Determine which ray the pixel belongs to
+        // NOTE: [Aaron] Can be made more efficient with a lookup table
+				float angle = (float) atan2((double) col * kernel_size_w, (double) (row - filtered_image.h / 2) * kernel_size_h);
+
+				uint8_t err_angle_min_idx = 0;
+				float err_angle_min = 2.0 * M_PI;
+				for (uint8_t i=0; i<7; i++) {
+					float err_angle = fabsf(angle - ray_angles[i]);
+					if (err_angle < err_angle_min) {
+						err_angle_min_idx = i;
+						err_angle_min = err_angle;
+					}
+				}
+
+				// Add a score to the corresponding ray
+				ray_scores[err_angle_min_idx] += 1.0f;
+			}
+		}
+	}
+
+	// Deallocate memory
+  image_free(&filtered_image);
+
+	// Go through ray scores, multiplying by corresponding weights and keep track of ray with highest score
+	uint8_t best_heading_idx=0;
+	float best_heading_score = 0.0f;
+	for (uint8_t i=0; i<7; i++) {
+		float score = ray_scores[i] * ray_weights[i];
+		if (score > best_heading_score) {
+			*safe_length = score;
+			best_heading_score = score;
+			best_heading_idx = i;
+		}
+	}
+
+	// Assign remaining results
+	*best_heading = M_PI/2 - ray_angles[best_heading_idx];
+  VERBOSE_PRINT("Best ray angle [deg]: %f\n", *best_heading * 180.0f / M_PI);
+
+	*green_pixels = *green_pixels * kernel_size_w * kernel_size_h;
+  // VERBOSE_PRINT("GF: total pixels %d\n", *green_pixels);
+}
 #endif
-
-void get_direction(struct image_t *img, int resolution, float *best_heading, float *safe_length) {
-
-    float step_size = M_PI / (float)resolution;
-    *best_heading = 0;
-    *safe_length = 0;
-
-    int counter = 0; //Initialize the counter variable
-    int number_steps_average = 31;
-    int radial_memory[31] = {0};
-
-    for (float angle = 0.001; angle < M_PI; angle += step_size) {
-        float radial = get_radial(img, angle, img->w);
-
-        if (counter > number_steps_average - 1){
-            // Move elements one position up and discard the first element
-            for (int i = 0; i < number_steps_average-1; ++i){
-                radial_memory[i] = radial_memory[i+1];
-            }
-            // Store value in the last position
-            radial_memory[number_steps_average - 1] = radial;
-        } else {
-            // Store value in the current position
-            radial_memory[counter] = radial;
-        }
-
-
-
-        if (counter >= number_steps_average-1){
-            float correction_weight = 0.2*(1-2*global_heading_object.green_pixels/(520.0 * 240.0));
-            //float correction_weight = 0;
-            // VERBOSE_PRINT("GF: correction weight %f\n", correction_weight);
-            if (counter == number_steps_average - 1){
-                float average_radial = 0;
-                int steps_used = 0;
-                for (int i = 0; i < (number_steps_average - 1)/2; ++i) {
-                    if (i == 0){
-                        //average_radial += radial_memory[i]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin((i+steps_used)*step_size));
-                        average_radial += radial_memory[i]*(1.5 - (weight_function-correction_weight)*fabs((i+steps_used)*step_size-M_PI/2)-0.5*sin((i+steps_used)*step_size));
-                        //VERBOSE_PRINT("GF: check right %f\n", radial_memory[i]/240);
-                    } else {
-
-                    //average_radial += (radial_memory[i+steps_used]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin((i+steps_used)*step_size)) + radial_memory[i+steps_used+1]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin((i+steps_used+1)*step_size)));
-                    average_radial += (radial_memory[i+steps_used]*(1.5 - (weight_function-correction_weight)*fabs((i+steps_used)*step_size-M_PI/2)-0.5*sin((i+steps_used)*step_size)) + radial_memory[i+steps_used+1]*(1.5 - (weight_function-correction_weight)*fabs((i+steps_used+1)*step_size-M_PI/2)-0.5*sin((i+steps_used+1)*step_size)));
-                    average_radial = average_radial/(2*i+1);
-                    steps_used += 1;
-                    }
-                    if (average_radial > *safe_length) {
-                        *best_heading = i*step_size;
-                        *safe_length = average_radial;
-                    }
-                }
-            }
-
-            float average_radial = 0;
-            float angle_in_middle = angle - (number_steps_average-1)*step_size/2;
-            for (int i = 0; i < number_steps_average; ++i) {
-                //average_radial += radial_memory[i]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin(angle - (number_steps_average-1-i)*step_size));
-                average_radial += (radial_memory[i]*(1.5 - (weight_function-correction_weight)*fabs(angle-(number_steps_average-1-i)*step_size-M_PI/2)-0.5*sin(angle-(number_steps_average-1-i)*step_size)));
-            }
-            //average_radial = average_radial*sin((angle_in_middle-M_PI/6)*M_PI/(5*M_PI/6-M_PI/6))/number_steps_average;
-            average_radial = average_radial/number_steps_average;
-            // VERBOSE_PRINT("%f  %f  %f\n",angle_in_middle,average_radial,*safe_length);
-            if (average_radial > *safe_length) {
-                *best_heading = angle_in_middle;
-                *safe_length = average_radial;
-            }
-            if(counter == resolution-1){
-                average_radial = average_radial*number_steps_average;
-                int steps_used = 0;
-
-                for (int i = 0; i < (number_steps_average - 1)/2; ++i) {
-                    //average_radial += -(radial_memory[i+steps_used]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin(angle-(number_steps_average-1-2*steps_used)*step_size)) + radial_memory[i+steps_used+1]*((1-weight_function+correction_weight)+(weight_function - correction_weight)*sin(angle-(number_steps_average-1-2*steps_used-1)*step_size)));
-                    average_radial += -(radial_memory[i+steps_used]*(1.5 - (weight_function-correction_weight)*fabs(angle-(number_steps_average-1-2*steps_used)*step_size-M_PI/2)-0.5*sin(angle-(number_steps_average-1-2*steps_used)*step_size))+radial_memory[i+steps_used+1]*(1.5 - (weight_function-correction_weight)*fabs(angle-(number_steps_average-1-2*steps_used-1)*step_size-M_PI/2)-0.5*sin(angle-(number_steps_average-1-2*steps_used-1)*step_size)));
-                    average_radial = average_radial/(number_steps_average-2*(i+1));
-                    steps_used += 1;
-
-                    if (average_radial > *safe_length) {
-                        *best_heading = angle-((number_steps_average-1)/2-i)*step_size;
-                        *safe_length = average_radial;
-                    }
-                    average_radial = average_radial*(number_steps_average-2*(i+1));
-                }
-            }
-        }
-
-        ++counter;
-    }
-    uint8_t *buffer = img->buf;
-    for (double i = 0; i < img->w; i++) {
-        uint16_t y = (uint16_t)((double)img->h/2 + i * cos(*best_heading));
-        uint16_t x = (uint16_t)(i * sin(*best_heading));
-        buffer[y * 2 * img->w + 2 * x] = 0;      // U
-        buffer[y * 2 * img->w + 2 * x + 1] = 0;  // Y1
-        buffer[y * 2 * img->w + 2 * x + 2] = 255;  // V
-    }
-    *best_heading = M_PI/2-*best_heading;
-    // VERBOSE_PRINT("GF: Angle %f and length %f\n", *best_heading,*safe_length);
-
-
-
-    //*best_heading = 0;
-}
-
-/*
- * Init and Periodic code
- */
-struct image_t *green_heading_finder1(struct image_t *img, uint8_t camera_id);
-struct image_t *green_heading_finder1(struct image_t *img, uint8_t camera_id __attribute__((unused)))
-{
-    return green_heading_finder(img);
-}
-
-void green_detector_init(void) {
-    register_periodic_telemetry(DefaultPeriodic, PPRZ_MSG_ID_GREEN_FOLLOWER, send_green_follower);
-
-    memset(&global_heading_object, 0, sizeof(struct heading_object_t));
-    pthread_mutex_init(&mutex, NULL);
-
-    hysteresis_template_p = malloc(2*480*sizeof(uint16_t));
-    set_hysteresis_template(hysteresis_template_p, 70);
-
-    #ifdef GREEN_DETECTOR_LUM_MIN
-        gd_lum_min = GREEN_DETECTOR_LUM_MIN;
-        gd_lum_max = GREEN_DETECTOR_LUM_MAX;
-        gd_cb_min = GREEN_DETECTOR_CB_MIN;
-        gd_cb_max = GREEN_DETECTOR_CB_MAX;
-        gd_cr_min = GREEN_DETECTOR_CR_MIN;
-        gd_cr_max = GREEN_DETECTOR_CR_MAX;
-    #endif
-
-    cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
-
-    // Initialize the SIMD parameters
-    #if SIMD_ENABLED == TRUE
-
-        hysteresis_template_p = malloc(2*480*sizeof(uint16_t));
-        set_hysteresis_template(hysteresis_template_p, 70);
-        // Set Threshold arrays
-        uint8_t min_thresh_array[16] = {gd_cb_min, gd_lum_min, gd_cr_min, gd_lum_min,
-                                        gd_cb_min, gd_lum_min, gd_cr_min, gd_lum_min,
-                                        gd_cb_min, gd_lum_min, gd_cr_min, gd_lum_min,
-                                        gd_cb_min, gd_lum_min, gd_cr_min, gd_lum_min};
-
-        uint8_t max_thresh_array[16] = {gd_cb_max, gd_lum_max, gd_cr_max, gd_lum_max,
-                                        gd_cb_max, gd_lum_max, gd_cr_max, gd_lum_max,
-                                        gd_cb_max, gd_lum_max, gd_cr_max, gd_lum_max,
-                                        gd_cb_max, gd_lum_max, gd_cr_max, gd_lum_max};
-
-        gto.min_thresh = vld1q_u8(min_thresh_array);
-        gto.max_thresh = vld1q_u8(max_thresh_array);
-
-        // Set second Threshold arrays
-        uint8_t min_thresh_array_2[16] = {gd_cb_min, gd_cb_min, gd_lum_min, gd_lum_min,
-                                          gd_cr_min, gd_cr_min, gd_lum_min, gd_lum_min,
-                                          gd_cb_min, gd_cb_min, gd_lum_min, gd_lum_min,
-                                          gd_cr_min, gd_cr_min, gd_lum_min, gd_lum_min};
-
-        uint8_t max_thresh_array_2[16] = {gd_cb_max, gd_cb_max, gd_lum_max, gd_lum_max,
-                                          gd_cr_max, gd_cr_max, gd_lum_max, gd_lum_max,
-                                          gd_cb_max, gd_cb_max, gd_lum_max, gd_lum_max,
-                                          gd_cr_max, gd_cr_max, gd_lum_max, gd_lum_max};
-
-        gto.min_thresh_2 = vld1q_u8(min_thresh_array_2);
-        gto.max_thresh_2 = vld1q_u8(max_thresh_array_2);
-
-        // Set standard arrays
-        gto.zero_array = vdupq_n_u8(0);
-        gto.zero_array_8 = vdup_n_u8(0);
-        gto.one_array = vdupq_n_u8(1);
-
-        // Set selector to powers of 2 (so 1, 2, 4, 8, etc.) which in binary matches the right bits.
-        for (int i = 0; i < 8; i++) {
-          gto.select[i] = pow(2, i);
-        }
-    #endif
-}
-
-void green_detector_periodic(void) {
-    static struct heading_object_t local_heading_object;
-    pthread_mutex_lock(&mutex);
-    memcpy(&local_heading_object, &global_heading_object, sizeof(struct heading_object_t));
-    pthread_mutex_unlock(&mutex);
-
-    if(local_heading_object.updated){
-        end_cycle_counter = clock();
-        AbiSendMsgGREEN_DETECTION(GREEN_DETECTION_ID, local_heading_object.best_heading, local_heading_object.safe_length, local_heading_object.green_pixels);
-        local_heading_object.updated = false;
-
-        global_heading_object.cycles_since_update = (end_cycle_counter - start_cycle_counter);
-        start_cycle_counter = clock();
-    }
-}

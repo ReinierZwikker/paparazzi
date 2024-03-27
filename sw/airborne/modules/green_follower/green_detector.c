@@ -37,11 +37,11 @@ uint16_t *hysteresis_template_p;
 #if CYBERZOO_FILTER
 // Filter Settings CYBERZOO
 uint8_t gd_lum_min = 60;
-uint8_t gd_lum_max = 140;
-uint8_t gd_cb_min = 24;
+uint8_t gd_lum_max = 220;
+uint8_t gd_cb_min = 20;
 uint8_t gd_cb_max = 105;
-uint8_t gd_cr_min = 28;
-uint8_t gd_cr_max = 160;
+uint8_t gd_cr_min = 14;
+uint8_t gd_cr_max = 150;
 #else
 // Filter Settings NPS/GAZEBO
 uint8_t gd_lum_min = 60;
@@ -178,18 +178,13 @@ static struct image_t *green_heading_finder(struct image_t *img)
 
       float new_heading = ((float)new_direction - 240) * 0.004;
 
-
-      pthread_mutex_lock(&mutex);
-      global_heading_object.best_heading = new_heading;
-      global_heading_object.old_direction = new_direction;
-      global_heading_object.safe_length = safe_length;
-      global_heading_object.green_pixels = green_pixels;
-      global_heading_object.updated = true;
     #else
       // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
       apply_threshold(img, &green_pixels, gd_lum_min, gd_lum_max, gd_cb_min, gd_cb_max, gd_cr_min, gd_cr_max);
       // Scan in radials from the centre bottom of the image to find the direction with the most green pixels
       get_direction(img, scan_resolution, &best_heading, &safe_length);
+    #endif
+    clock_t end = clock();
 
       pthread_mutex_lock(&mutex);
       global_heading_object.best_heading = best_heading;
@@ -374,7 +369,7 @@ void get_direction_simd(uint8_t* average_array, uint16_t* local_hysteresis_templ
   for (uint16_t i = 0; i < 480; i++) {
     // Apply weights
     uint16_t array_location = i + 480 - old_direction;
-    weighted_average_array[i] = (uint16_t)average_array[i] * local_hysteresis_template_p[array_location];
+    // weighted_average_array[i] = (uint16_t)average_array[i] * local_hysteresis_template_p[array_location];
 
     // Find maximum
     if (weighted_average_array[i] > *new_direction) {

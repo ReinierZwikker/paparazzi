@@ -24,6 +24,7 @@
         <dl_setting var="gd_cr_max"              min="0" step="1" max="255" shortname="v_max" />
         <dl_setting var="gain_centre"            min="0" step="0.01" max="2" shortname="g_centre" />
         <dl_setting var="gain_previous_heading"  min="0" step="0.01" max="2" shortname="g_prev" />
+        <dl_setting var="visualize"              min="0" step="1"    max="2" shortname="visualize" />
         <dl_setting var="weight_function"        min="0" step="0.01" max="1" shortname="weight_f" />
       </dl_settings>
     </dl_settings>

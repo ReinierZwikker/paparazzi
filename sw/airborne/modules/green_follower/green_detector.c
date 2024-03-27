@@ -72,6 +72,7 @@ float gain_centre = 0.6;
 float gain_previous_heading = 0.8;
 float hysteresis_width = 5;
 float hysteresis_sides = 0.5;
+uint8_t visualize = 0;
 
 // Define constants
 float weight_function = 0.85;
@@ -205,10 +206,20 @@ static struct image_t *green_heading_finder(struct image_t *img)
       best_heading = ((float)new_direction - 8.0f) * 0.065;
 
       // Visualize
-      struct image_t filtered_image;
-      image_create(&filtered_image, img->w / kernel_size_w, img->h / kernel_size_h, IMAGE_BOOL);
-      green_filter(img, &filtered_image);
-      img = &filtered_image;
+      if (visualize == 1) {
+        struct image_t filtered_image;
+        image_create(&filtered_image, img->w / kernel_size_w, img->h / kernel_size_h, IMAGE_BOOL);
+        green_filter(img, &filtered_image);
+        img = &filtered_image;
+      }
+      else if (visualize == 2) {
+        uint32_t dummy_green_pixels;
+        apply_threshold(img, &dummy_green_pixels,
+                        local_lum_min, local_lum_max,
+                        local_cb_min, local_cb_max,
+                        local_cr_min, local_cr_max);
+      }
+
     #else
       get_direction(img, &best_heading, &safe_length, &green_pixels);
     #endif

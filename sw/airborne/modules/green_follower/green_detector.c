@@ -19,7 +19,7 @@
 #define PAINT_OVER_IMAGE_AVERAGED TRUE
 
 // Enables vector optimization
-#define SIMD_ENABLED TRUE
+#define SIMD_ENABLED FALE
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"

@@ -186,7 +186,7 @@ static struct image_t *green_heading_finder(struct image_t *img)
 //                         old_direction, &new_direction, &safe_length);
 
       // float new_heading = ((float)new_direction - 240) * 0.004;
-
+      apply_threshold(img, &green_pixels, gd_lum_min, gd_lum_max, gd_cb_min, gd_cb_max, gd_cr_min, gd_cr_max);
     #else
       // Filter the image so that all green pixels have a y value of 255 and all others a y value of 0
       apply_threshold(img, &green_pixels, gd_lum_min, gd_lum_max, gd_cb_min, gd_cb_max, gd_cr_min, gd_cr_max);
@@ -309,6 +309,7 @@ void test (uint8_t* band_sum) {
 }
 
 uint8x16_t average_block(struct image_t *img, uint32_t location) {
+  // 8x8 pixel average
   uint8_t *buffer = img->buf;
   uint8x16_t averages_1[4];
   uint8x16_t averages_2[2];
@@ -319,9 +320,7 @@ uint8x16_t average_block(struct image_t *img, uint32_t location) {
     averages_1[row/2] = vhaddq_u8(slice_1, slice_2);
   }
   for (uint8_t row = 0; row < 4; row += 2) {
-    uint8x16_t slice_1 = vld1q_u8(buffer + location + 480 * row);
-    uint8x16_t slice_2 = vld1q_u8(buffer + location + 480 * (row + 1));
-    averages_2[row/2] = vhaddq_u8(slice_1, slice_2);
+    averages_2[row/2] = vhaddq_u8(averages_1[row], averages_1[row + 1]);
   }
   return vhaddq_u8(averages_2[0], averages_2[1]);
 }
@@ -344,12 +343,13 @@ void get_regions(struct image_t *img, float* regions) {
           if (i == 1 && j == 3) { // Cut-off the 8th value of the first and second block
             first_add_low_array[j] = gto.zero_array_8; // Maintain constant average
             first_add_high_array[j] = gto.zero_array_8; // Maintain constant average
-          } else {
+          }
+          else {
             if (i == 0 || i == 1 || i == 4 || i == 5){
-              location_1 = 16*j + 64*i - 16*(i/3);
+              location_1 = 16*j + 64*(i%2) + 8*480*(i/3) + 480*16*k + 480*32*region_id;
               location_2 = location_1 + 7*16;
             } else {
-              location_1 = 16*j + 64*i + 112 - 32*(i/5);
+              location_1 = 16*j + 64*(i%2) + 8*480*(i/5) + 14*16 + 480*16*k + 480*32*region_id;
               location_2 = location_1 + 8*16;
             }
 
@@ -422,9 +422,8 @@ void get_regions(struct image_t *img, float* regions) {
     uint8x16_t first_region_add_r16 = vrev64q_u8(first_region_add);
     uint8x16_t sra = vaddq_u8(first_region_add_r16, first_region_add);
 
-    regions[region_id] = (float)(sra[0] + sra[1] + sra[2] + sra[3]);
+    regions[region_id] = (float)(sra[2] + sra[6] + sra[10] + sra[14]);
   }
-
 }
 
 void get_lines(struct image_t *img, uint8_t* band_sum) {

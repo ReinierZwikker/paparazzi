@@ -19,7 +19,7 @@
 #define PAINT_OVER_IMAGE_AVERAGED TRUE
 
 // Enables vector optimization
-#define SIMD_ENABLED FALE
+#define SIMD_ENABLED TRUE
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
@@ -122,10 +122,10 @@ void apply_threshold(struct image_t *img, uint32_t *green_pixels,
 
 void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t width);
 #if SIMD_ENABLED
-void get_regions(struct image_t *img, float* regions);
 uint8x16_t average_block(struct image_t *img, uint32_t location);
-void get_direction_simd(uint8_t* average_array, uint16_t* local_hysteresis_template_p,
-                        uint16_t old_direction, uint16_t* new_direction, float* safe_length);
+void get_regions(struct image_t *img, float* regions);
+void get_direction_simd(float* regions, uint16_t* local_hysteresis_template_p,
+                        uint16_t old_direction, uint16_t* new_direction, float* safe_length, uint32_t* green_pixels);
 #else
 void get_direction(struct image_t* original_image, float* best_heading, float* safe_length, uint32_t* green_pixels);
 #endif
@@ -188,14 +188,12 @@ static struct image_t *green_heading_finder(struct image_t *img)
         gto.max_thresh = vld1q_u8(max_thresh_pointer);
       }
 
-      uint8_t band_sum[520];
-      memset(&band_sum, 0, 520*sizeof(uint8_t));
-      uint8_t average_array[480];
-      memset(&average_array, 0, 480*sizeof(uint8_t));
       float regions[16];
       memset(&regions, 0, 16*sizeof(float));
 
       get_regions(img, &regions[0]);
+      get_direction_simd(&regions[0], &hysteresis_template_p[0],
+                         old_direction, &new_direction, &safe_length, &green_pixels);
 
     #else
       get_direction(img, &best_heading, &safe_length, &green_pixels);
@@ -230,9 +228,6 @@ void green_detector_init(void) {
   memset(&global_heading_object, 0, sizeof(struct heading_object_t));
   pthread_mutex_init(&mutex, NULL);
 
-  hysteresis_template_p = malloc(2*480*sizeof(uint16_t));
-  set_hysteresis_template(hysteresis_template_p, 70);
-
 #ifdef GREEN_DETECTOR_LUM_MIN
   gd_lum_min = GREEN_DETECTOR_LUM_MIN;
         gd_lum_max = GREEN_DETECTOR_LUM_MAX;
@@ -246,8 +241,8 @@ void green_detector_init(void) {
 
   // Initialize the SIMD parameters
 #if SIMD_ENABLED == TRUE
-  hysteresis_template_p = malloc(2*480*sizeof(uint16_t));
-  set_hysteresis_template(hysteresis_template_p, 70);
+  hysteresis_template_p = malloc(2*16*sizeof(uint16_t));
+  set_hysteresis_template(hysteresis_template_p, 3);
 
   // Set Threshold arrays
   uint8_t min_thresh_array[16] = {gd_cb_min, gd_cb_min, gd_lum_min, gd_lum_min,
@@ -336,9 +331,9 @@ void apply_threshold(struct image_t *img, uint32_t* green_pixels,
 
 void set_hysteresis_template(uint16_t *local_hysteresis_template_p, uint16_t width) {
   // This function creates a weighing function
-  memset(local_hysteresis_template_p, 128, 2 * 480 * sizeof(uint16_t));
+  memset(local_hysteresis_template_p, 128, 2 * 16 * sizeof(uint16_t));
   for (uint16_t i = 0; i < width; i++) {
-    local_hysteresis_template_p[480 - (uint16_t) (M_PI * i/2)] = 192 + (uint16_t) (64 * cos(2 * (i - 480) / width));
+    local_hysteresis_template_p[16 - (uint16_t) (M_PI * i/2)] = 192 + (uint16_t) (64 * cos(2 * (i - 16) / width));
   }
 }
 
@@ -461,22 +456,25 @@ void get_regions(struct image_t *img, float* regions) {
   }
 }
 
-void get_direction_simd(uint8_t* average_array, uint16_t* local_hysteresis_template_p,
-                        uint16_t old_direction, uint16_t* new_direction, float* safe_length) {
+void get_direction_simd(float* regions, uint16_t* local_hysteresis_template_p,
+                        uint16_t old_direction, uint16_t* new_direction, float* safe_length, uint32_t* green_pixels) {
   // Calculates the direction the drone should go using the weighing function and regions
-  new_direction = 0;
-  uint16_t weighted_average_array[480];
-  memset(&weighted_average_array, 0, 480*sizeof(uint16_t));
+  uint16_t local_new_direction = 0;
+  uint32_t local_green_pixels = 0;
 
-  for (uint16_t i = 0; i < 480; i++) {
+  float weighted_average_array[16];
+  memset(&weighted_average_array, 0, 16*sizeof(float));
+
+  for (uint16_t i = 0; i < 16; i++) {
     // Apply weights
-    uint16_t array_location = i + 480 - old_direction;
+    uint16_t array_location = i + 16 - old_direction;
     // weighted_average_array[i] = (uint16_t)average_array[i] * local_hysteresis_template_p[array_location];
+    local_green_pixels = 0;
 
     // Find maximum
     if (weighted_average_array[i] > *new_direction) {
       *new_direction = i; // Set new direction (not the same as heading)
-      *safe_length = average_array[i]; // Set new safe length
+      *safe_length = regions[i]; // Set new safe length
     }
   }
 }

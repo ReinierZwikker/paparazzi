@@ -469,7 +469,7 @@ void get_direction(float* regions, float* local_hysteresis_template_p,
     }
   }
   *new_direction = local_new_direction;
-  *safe_length = local_safe_length;
+  *safe_length = local_safe_length * 5;
   *green_pixels = local_green_pixels * 60; // 60 to make it comparable to the old green follower!!
 }
 

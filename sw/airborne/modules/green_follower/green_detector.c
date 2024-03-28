@@ -222,6 +222,9 @@ static struct image_t *green_heading_finder(struct image_t *img)
 
     #else
       get_direction(img, &best_heading, &safe_length, &green_pixels);
+
+
+
     #endif
     clock_t end = clock();
 
@@ -605,33 +608,48 @@ void get_direction(struct image_t* original_image, float* best_heading, float* s
 	// Apply filter to original image
 	green_filter(original_image, &filtered_image);
 
-	// Go through each pixel in the filtered image
-	// and determine which ray it belongs to
-	for (uint16_t row=0; row<filtered_image.h; row++) {
-		for (uint16_t col=0; col<filtered_image.w; col++) {
-			if (filtered_buffer[row * filtered_image.w + col] == true) {
+	// // Go through each pixel in the filtered image
+	// // and determine which ray it belongs to
+	// for (uint16_t row=0; row<filtered_image.h; row++) {
+	// 	for (uint16_t col=0; col<filtered_image.w; col++) {
+	// 		if (filtered_buffer[row * filtered_image.w + col] == true) {
 
-				// Add a count to the number of green pixels
-				*green_pixels += 1;
+	// 			// Add a count to the number of green pixels
+	// 			*green_pixels += 1;
 
-				// Determine which ray the pixel belongs to
-        // NOTE: [Aaron] Can be made more efficient with a lookup table
-				float angle = (float) atan2((double) col * kernel_size_w, (double) (row - filtered_image.h / 2) * kernel_size_h);
+	// 			// Determine which ray the pixel belongs to
+  //       // NOTE: [Aaron] Can be made more efficient with a lookup table
+	// 			float angle = (float) atan2((double) col * kernel_size_w, (double) (row - filtered_image.h / 2) * kernel_size_h);
 
-				uint8_t err_angle_min_idx = 0;
-				float err_angle_min = 2.0 * M_PI;
-				for (uint8_t i=0; i<7; i++) {
-					float err_angle = fabsf(angle - ray_angles[i]);
-					if (err_angle < err_angle_min) {
-						err_angle_min_idx = i;
-						err_angle_min = err_angle;
-					}
-				}
+	// 			uint8_t err_angle_min_idx = 0;
+	// 			float err_angle_min = 2.0 * M_PI;
+	// 			for (uint8_t i=0; i<7; i++) {
+	// 				float err_angle = fabsf(angle - ray_angles[i]);
+	// 				if (err_angle < err_angle_min) {
+	// 					err_angle_min_idx = i;
+	// 					err_angle_min = err_angle;
+	// 				}
+	// 			}
 
-				// Add a score to the corresponding ray
-				ray_scores[err_angle_min_idx] += 1.0f;
-			}
-		}
+	// 			// Add a score to the corresponding ray
+	// 			ray_scores[err_angle_min_idx] += 1.0f;
+	// 		}
+	// 	}
+	// }
+
+  // Go through each pixel in the filtered image
+	// and determine the number of valid large pixels in each vertical band of 4 large pixels wide (=region?)
+  float[16] regions;
+  memset(&regions, 0, 16*sizeof(float));
+  for (uint16_t region=0; region<filtered_image.h / 4; region++) {
+    for (uint16_t row_in_region=0; row_in_region<4; row_in_region++) {
+		  for (uint16_t col=0; col<filtered_image.w; col++) {
+        if (filtered_buffer[(region*4 + row_in_region) * filtered_image.w + col] == true) {
+          // Add a count to the corresponding region
+          regions[region] += 1.0f;
+        }
+		  }
+    }
 	}
 
 	// Deallocate memory
@@ -656,4 +674,11 @@ void get_direction(struct image_t* original_image, float* best_heading, float* s
 	*green_pixels = *green_pixels * kernel_size_w * kernel_size_h;
   // VERBOSE_PRINT("GF: total pixels %d\n", *green_pixels);
 }
+
+
+
+
+
+
+
 #endif

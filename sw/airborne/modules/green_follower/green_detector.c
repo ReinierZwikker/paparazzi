@@ -470,6 +470,8 @@ void get_regions(struct image_t *img, float* regions) {
   uint8x16_t second_add_array[2];
   uint8x16_t region_array[2];
 
+  uint8x16_t slice_2;
+
   bool skip;
 
   uint32_t location_1, location_2;
@@ -507,10 +509,10 @@ void get_regions(struct image_t *img, float* regions) {
           //                            [u10, y10, v10, y11, u11, y12, v11, y13, ... , y17], ...
           uint8x16_t slice_1 = average_block(img, location_1); // Load in a slice
           if (skip == true) {
-              uint8x16_t slice_2 = gto.zero_array; // Skip, because there is no pixel there (should actually be the previous value, but oh well
+              slice_2 = gto.zero_array; // Skip, because there is no pixel there (should actually be the previous value, but oh well
           }
           else {
-              uint8x16_t slice_2 = average_block(img, location_2); // Load in a slice 8 addresses further than slice 1
+              slice_2 = average_block(img, location_2); // Load in a slice 8 addresses further than slice 1
           }
 
 

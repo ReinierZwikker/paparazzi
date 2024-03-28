@@ -498,6 +498,10 @@ void get_regions(struct image_t *img, float* regions) {
   uint8x16_t second_add_array[2];
   uint8x16_t region_array[2];
 
+  uint8x16_t slice_2;
+
+  bool skip;
+
   uint32_t location_1, location_2;
 
   for (uint8_t region_id = 0; region_id < 16; region_id++) {
@@ -506,54 +510,64 @@ void get_regions(struct image_t *img, float* regions) {
       uint8x16_t smaller_combined = gto.zero_array; // A uint8 vector with 16 values of which every bit represents a y, u or v value
       for (uint8_t i = 0; i < 8; i++) {
         for (uint8_t j = 0; j < 4; j++) {
-          if (i == 1 && j == 3) { // Cut-off the 8th value of the first and second block
-            first_add_low_array[j] = gto.zero_array_8; // Maintain constant average
-            first_add_high_array[j] = gto.zero_array_8; // Maintain constant average
+
+          if (i == 0 || i == 1 || i == 4 || i == 5){
+            location_1 = 16*j + 64*(i%2) + 8*480*(i/3) + 480*16*k + 480*32*region_id;
+
+            // Skip if in the bottom 4 blocks
+            if (j == 3) {
+                skip = true;
+            }
+            else {
+                skip = false;
+            }
+          } else {
+            location_1 = 16*j + 64*(i%2) + 8*480*(i/5) + 14*16 + 480*16*k + 480*32*region_id;
+            skip = false;
+          }
+          // Put second location 4 slices further
+          location_2 = location_1 + 4*16;
+
+
+          // uint8_t test_vector_1[16] = {80, 70, 15, 70, 80, 70, 15, 70, 80, 70, 15, 70, 80, 70, 15, 70};
+          // uint8_t test_vector_2[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+          // Take slices from the image
+          // Starts with arrays in form [u00, y00, v00, y01, u01, y02, v01, y03, ... , y07],
+          //                            [u10, y10, v10, y11, u11, y12, v11, y13, ... , y17], ...
+          uint8x16_t slice_1 = average_block(img, location_1); // Load in a slice
+          if (skip == true) {
+              slice_2 = gto.zero_array; // Skip, because there is no pixel there (should actually be the previous value, but oh well
           }
           else {
-            if (i == 0 || i == 1 || i == 4 || i == 5){
-              location_1 = 16*j + 64*(i%2) + 8*480*(i/3) + 480*16*k + 480*32*region_id;
-              location_2 = location_1 + 7*16;
-            } else {
-              location_1 = 16*j + 64*(i%2) + 8*480*(i/5) + 14*16 + 480*16*k + 480*32*region_id;
-              location_2 = location_1 + 8*16;
-            }
-
-            // uint8_t test_vector_1[16] = {80, 70, 15, 70, 80, 70, 15, 70, 80, 70, 15, 70, 80, 70, 15, 70};
-            // uint8_t test_vector_2[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-            // Take slices from the image
-            // Starts with arrays in form [u00, y00, v00, y01, u01, y02, v01, y03, ... , y07],
-            //                            [u10, y10, v10, y11, u11, y12, v11, y13, ... , y17], ...
-            uint8x16_t slice_1 = average_block(img, location_1); // Load in a slice
-            uint8x16_t slice_2 = average_block(img, location_2); // Load in a slice 8 addresses further than slice 1
-
-            // Zip and add arrays
-            // Gets array in form [(u00+u02)/2, (u10+u12)/2, (y00+y04)/2, (y10+y14)/2, .. (y115+y137)/2], ...
-            uint8x16x2_t zipped_slices = vzipq_u8(slice_1, slice_2); // Zip the slices together so [a0, b0, a1, b1, ...]
-            uint8x16_t first_add = vhaddq_u8(zipped_slices.val[0],
-                                             zipped_slices.val[1]); // Add the first zip array to the second
-
-            // Separate arrays
-            first_add_low_array[j] = vget_low_u8(first_add); // Get the first 8 bytes of first_add_1
-            first_add_high_array[j] = vget_high_u8(first_add); // Get the last 8 bytes of first_add_1
+              slice_2 = average_block(img, location_2); // Load in a slice 8 addresses further than slice 1
           }
 
-          // Start adding
-          if (j == 1) {
-            // Combine and add
-            // Gets array in form [u0_t, u1_t, y0_t, ... y7_t]
-            uint8x16_t first_add_low_comb = vcombine_u8(first_add_low_array[0], first_add_low_array[1]);
-            uint8x16_t first_add_high_comb = vcombine_u8(first_add_high_array[0], first_add_high_array[1]);
-            second_add_array[0] = vhaddq_u8(first_add_low_comb, first_add_high_comb);
-          } else if (j == 3) {
-            // Combine and add
-            // Gets array in form [u0_t, u1_t, y0_t, ... y7_t]
-            uint8x16_t first_add_low_comb = vcombine_u8(first_add_low_array[2], first_add_low_array[3]);
-            uint8x16_t first_add_high_comb = vcombine_u8(first_add_high_array[2], first_add_high_array[3]);
-            second_add_array[1] = vhaddq_u8(first_add_low_comb, first_add_high_comb);
-          }
+
+          // Zip and add arrays
+          // Gets array in form [(u00+u02)/2, (u10+u12)/2, (y00+y04)/2, (y10+y14)/2, .. (y115+y137)/2], ...
+          uint8x16x2_t zipped_slices = vzipq_u8(slice_1, slice_2); // Zip the slices together so [a0, b0, a1, b1, ...]
+          uint8x16_t first_add = vhaddq_u8(zipped_slices.val[0],
+                                           zipped_slices.val[1]); // Add the first zip array to the second
+
+          // Separate arrays
+          first_add_low_array[j] = vget_low_u8(first_add); // Get the first 8 bytes of first_add_1
+          first_add_high_array[j] = vget_high_u8(first_add); // Get the last 8 bytes of first_add_1
+
+
         }
+        // Start adding
+        // Combine and add
+        // Gets array in form [u0_t, u1_t, y0_t, ... y7_t]
+        uint8x16_t first_add_low_comb_0 = vcombine_u8(first_add_low_array[0], first_add_low_array[2]);
+        uint8x16_t first_add_high_comb_0 = vcombine_u8(first_add_high_array[0], first_add_high_array[2]);
+        second_add_array[0] = vhaddq_u8(first_add_low_comb_0, first_add_high_comb_0);
+        // Combine and add
+        // Gets array in form [u0_t, u1_t, y0_t, ... y7_t]
+        uint8x16_t first_add_low_comb_1 = vcombine_u8(first_add_low_array[1], first_add_low_array[3]);
+        uint8x16_t first_add_high_comb_1 = vcombine_u8(first_add_high_array[1], first_add_high_array[3]);
+        second_add_array[1] = vhaddq_u8(first_add_low_comb_1, first_add_high_comb_1);
+
         // Average of 4 windows [u0_av, u1_av, y00_av, y10_av, v0_av, v1_av, y01_av, y11_av, u2_av, ..., y31_av]
         uint8x16_t third_add_array = vhaddq_u8(second_add_array[0], second_add_array[1]);
 
@@ -585,10 +599,12 @@ void get_regions(struct image_t *img, float* regions) {
     }
     // Add together green pixels
     uint8x16_t first_region_add = vaddq_u8(region_array[0], region_array[1]);
-    uint8x16_t first_region_add_r16 = vrev64q_u8(first_region_add);
-    uint8x16_t sra = vaddq_u8(first_region_add_r16, first_region_add);
+    uint8x8_t first_region_add_low = vget_low_u8(first_region_add);
+    uint8x8_t first_region_add_high = vget_high_u8(first_region_add);
+    uint8x8_t fr_4 = vadd_u8(first_region_add_low, first_region_add_high);
 
-    regions[region_id] = (float)(sra[2] + sra[6] + sra[10] + sra[14]);
+    // Add the bottom 6 block and subtract the top 2 blocks
+    regions[region_id] = (float)(fr_4[2] + fr_4[3] + fr_4[7]) - (float)fr_4[6];
   }
 }
                         

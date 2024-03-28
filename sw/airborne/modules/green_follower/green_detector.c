@@ -294,8 +294,8 @@ void green_detector_init(void) {
   for (int i = 0; i < 8; i++) {
     gto.select[i] = pow(2, i);
   }
-  gto.positive_select = vdupq_n_u8(136);
-  gto.negative_select = vdupq_n_u8(119);
+  gto.positive_select = vdupq_n_u8(119);
+  gto.negative_select = vdupq_n_u8(136);
 #endif
 }
 
@@ -617,9 +617,13 @@ void get_regions(struct image_t *img, float* regions) {
     uint8x8_t first_region_add_high_neg = vget_high_u8(first_region_add_neg);
     uint8x8_t fr_4_neg = vadd_u8(first_region_add_low_neg, first_region_add_high_neg);
 
+    VERBOSE_PRINT("pos: %d, %d, %d, %d\n", fr_4_pos[2], fr_4_pos[3], fr_4_pos[6], fr_4_pos[7]);
+    VERBOSE_PRINT("neg: %d, %d, %d, %d\n", fr_4_neg[2], fr_4_neg[3], fr_4_neg[6], fr_4_neg[7]);
+
     // Add the bottom 6 block and subtract the top 2 blocks
     regions[region_id] = (float)(fr_4_pos[2] + fr_4_pos[3] + fr_4_pos[6] + fr_4_pos[7]) -
                          (float)(fr_4_neg[2] + fr_4_neg[3] + fr_4_neg[6] + fr_4_neg[7]);
+
   }
 }
 

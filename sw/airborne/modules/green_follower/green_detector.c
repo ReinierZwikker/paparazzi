@@ -19,7 +19,7 @@
 #define PAINT_OVER_IMAGE_AVERAGED TRUE
 
 // Enables vector optimization
-#define SIMD_ENABLED TRUE
+#define SIMD_ENABLED FAlSE
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
@@ -42,7 +42,7 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 float *hysteresis_template_p;
 
 // TODO Make auto-select based on build target
-#define CYBERZOO_FILTER TRUE
+#define CYBERZOO_FILTER FALSE
 #if CYBERZOO_FILTER
 // Filter Settings CYBERZOO
 uint8_t gd_lum_min = 60;
@@ -643,7 +643,7 @@ void get_direction(struct image_t* original_image, float* best_heading, float* s
 	for (uint8_t i=0; i<7; i++) {
 		float score = ray_scores[i] * ray_weights[i];
 		if (score > best_heading_score) {
-			*safe_length = score;
+			*safe_length = score * 50;
 			best_heading_score = score;
 			best_heading_idx = i;
 		}

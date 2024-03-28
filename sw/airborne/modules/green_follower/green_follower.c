@@ -121,6 +121,7 @@ void green_follower_periodic(void)
 
         //VERBOSE_PRINT("GF: Moving from %f towards %f (d=%f) at %f\n", stateGetNedToBodyEulers_f()->psi, stateGetNedToBodyEulers_f()->psi + current_best_heading_green, current_best_heading_green, speed_sp);
       float heading_sp = current_best_heading_green + current_best_heading_corr;
+//      float heading_sp = current_best_heading_corr;
       //heading_sp = 0.7*previous_best_heading + 0.3*heading_sp;
       if (fabs(heading_sp) <= M_PI/6) {
         if (fabs(heading_sp-previous_best_heading)<=15*M_PI/180) {

@@ -20,7 +20,7 @@
 
 #define AMOUNT_OF_IMAGE_BUFFERS 6
 
-#define SIMD_ENABLED TRUE    ///< Only enable when compiling for ARM Cortex processor!
+#define SIMD_ENABLED FALSE    ///< Only enable when compiling for ARM Cortex processor!
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
@@ -227,7 +227,7 @@ static uint8_t eval_zones[AMOUNT_OF_SLICES] = {2, 3, 3, 3, 3, 3, 4, 4, 2, 3, 3, 
                                                1, 3, 1, 4, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                                0, 0, 0, 0, 0, 0};
 
-static float zone_headings[5] = {-M_PI/4, -M_PI/16, 0, M_PI/16, M_PI/4};
+static float zone_headings[5] = {-M_PI/10, -M_PI/14, 0, M_PI/14, M_PI/10};
 static float zone_amount_of_markers[5] = {29, 37, 75, 36, 30};
 
 // Struct to save image for one frame
@@ -473,11 +473,11 @@ static struct image_t *corr_depth_finder(struct image_t *current_image_p) {
             uint32_t buffer_offset = 2 * current_image_p->w * y_slice + 2 * x_slice;
             // Y_eval_e
             previous_Y_slice_p  = previous_buf_locations_p[slice_i]         + buffer_offset + 1;
-            current_Y_slice_p   = current_buf_locations_p[slice_i * step_i] + buffer_offset + 1;
+            current_Y_slice_p   = current_buf_locations_p[current_prev_curr_image_buf_i][slice_i * step_i] + buffer_offset + 1;
             correlations[step_i] += (float) (*current_Y_slice_p * *previous_Y_slice_p);
             // UV
             previous_UV_slice_p = previous_buf_locations_p[slice_i]         + buffer_offset;
-            current_UV_slice_p  = current_buf_locations_p[slice_i * step_i] + buffer_offset;
+            current_UV_slice_p  = current_buf_locations_p[current_prev_curr_image_buf_i][slice_i * step_i] + buffer_offset;
             correlations[step_i] += (float) (*(current_UV_slice_p + 2 * color_shift_p[slice_i * step_i])
                     * *previous_UV_slice_p);
           }

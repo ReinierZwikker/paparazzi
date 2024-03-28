@@ -576,7 +576,7 @@ void get_regions(struct image_t *img, float* regions) {
     uint8x8_t fr_4 = vadd_u8(first_region_add_low, first_region_add_high);
 
     // Add the bottom 6 block and subtract the top 2 blocks
-    regions[region_id] = (float)(fr_4[2] + fr_4[3] + fr_4[7]) - (float)fr_4[6];
+    regions[region_id] = (float)(fr_4[1] + fr_4[5] + fr_4[2]) - (float)fr_4[4];
   }
 }
 
@@ -596,7 +596,12 @@ void get_direction_simd(float* regions, float* local_hysteresis_template_p,
     weighted_regions[i] = (regions[i] * average_weighting);
 
     // Count up all the green pixels
-    local_green_pixels += (uint32_t)regions[i];
+    if (regions[i] < 0) {
+      local_green_pixels = 0;
+    }
+    else {
+      local_green_pixels += (uint32_t)regions[i];
+    }
 
     // Find maximum
     if (weighted_regions[i] > weighted_regions[local_new_direction]) {
@@ -685,7 +690,7 @@ void get_direction(struct image_t* original_image, float* best_heading, float* s
 
 	// Assign remaining results
 	*best_heading = M_PI/2 - ray_angles[best_heading_idx];
-  VERBOSE_PRINT("Best ray angle [deg]: %f\n", *best_heading * 180.0f / M_PI);
+  // VERBOSE_PRINT("Best ray angle [deg]: %f\n", *best_heading * 180.0f / M_PI);
 
 	*green_pixels = *green_pixels * kernel_size_w * kernel_size_h;
   // VERBOSE_PRINT("GF: total pixels %d\n", *green_pixels);

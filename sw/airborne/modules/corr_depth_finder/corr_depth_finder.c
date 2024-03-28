@@ -20,7 +20,7 @@
 
 #define AMOUNT_OF_IMAGE_BUFFERS 6
 
-#define SIMD_ENABLED FALSE    ///< Only enable when compiling for ARM Cortex processor!
+#define SIMD_ENABLED TRUE    ///< Only enable when compiling for ARM Cortex processor!
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"

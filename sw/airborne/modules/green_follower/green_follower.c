@@ -26,7 +26,7 @@
 #include <math.h>
 #include <time.h>
 
-#define GREEN_FOLLOWER_VERBOSE TRUE
+#define GREEN_FOLLOWER_VERBOSE FALSE
 
 #define PRINT(string,...) fprintf(stderr, "[green_follower->%s()] " string,__FUNCTION__ , ##__VA_ARGS__)
 #if GREEN_FOLLOWER_VERBOSE
@@ -37,7 +37,7 @@
 
 // define settings
 float gf_set_speed = 0.4f;           // max flight speed [m/s]
-float gf_floor_count_frac = 0.01f;  // percentage of the image that needs to be green before turning around
+float gf_floor_count_frac = 0.1f;  // percentage of the image that needs to be green before turning around
 float gf_sideways_speed_factor = 0.25f;  // Oversteer correction
 float gf_set_height = 0.5f;
 float gf_height_gain = 0.1f;

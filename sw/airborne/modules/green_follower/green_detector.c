@@ -16,10 +16,10 @@
 
 // Only one should be active at a time!!
 #define PAINT_OVER_IMAGE_NORMAL FALSE
-#define PAINT_OVER_IMAGE_AVERAGED TRUE
+#define PAINT_OVER_IMAGE_AVERAGED FALSE
 
 // Enables vector optimization
-#define SIMD_ENABLED FAlSE
+#define SIMD_ENABLED TRUE
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
@@ -30,7 +30,7 @@
 #endif
 PRINT_CONFIG_VAR(COLORFILTER_FPS)
 
-#define GREEN_DETECTOR_VERBOSE TRUE
+#define GREEN_DETECTOR_VERBOSE FALSE
 
 #define PRINT(string,...) fprintf(stderr, "[green_follower->%s()] " string,__FUNCTION__ , ##__VA_ARGS__)
 #if GREEN_DETECTOR_VERBOSE

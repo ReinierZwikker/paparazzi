@@ -16,7 +16,7 @@
 
 // Only one should be active at a time!!
 #define PAINT_OVER_IMAGE_NORMAL FALSE
-#define PAINT_OVER_IMAGE_AVERAGED FALSE
+#define PAINT_OVER_IMAGE_AVERAGED TRUE
 
 // Enables vector optimization
 #define SIMD_ENABLED TRUE
@@ -42,7 +42,7 @@ PRINT_CONFIG_VAR(COLORFILTER_FPS)
 float *hysteresis_template_p;
 
 // TODO Make auto-select based on build target
-#define CYBERZOO_FILTER FALSE
+#define CYBERZOO_FILTER TRUE
 #if CYBERZOO_FILTER
 // Filter Settings CYBERZOO
 uint8_t gd_lum_min = 60;
@@ -617,8 +617,8 @@ void get_regions(struct image_t *img, float* regions) {
     uint8x8_t first_region_add_high_neg = vget_high_u8(first_region_add_neg);
     uint8x8_t fr_4_neg = vadd_u8(first_region_add_low_neg, first_region_add_high_neg);
 
-    VERBOSE_PRINT("pos: %d, %d, %d, %d\n", fr_4_pos[2], fr_4_pos[3], fr_4_pos[6], fr_4_pos[7]);
-    VERBOSE_PRINT("neg: %d, %d, %d, %d\n", fr_4_neg[2], fr_4_neg[3], fr_4_neg[6], fr_4_neg[7]);
+    //VERBOSE_PRINT("pos: %d, %d, %d, %d\n", fr_4_pos[2], fr_4_pos[3], fr_4_pos[6], fr_4_pos[7]);
+    //VERBOSE_PRINT("neg: %d, %d, %d, %d\n", fr_4_neg[2], fr_4_neg[3], fr_4_neg[6], fr_4_neg[7]);
 
     // Add the bottom 6 block and subtract the top 2 blocks
     regions[region_id] = (float)(fr_4_pos[2] + fr_4_pos[3] + fr_4_pos[6] + fr_4_pos[7]) -

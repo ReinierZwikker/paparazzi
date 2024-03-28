@@ -115,6 +115,8 @@ struct threshold_object_t {
     uint8x8_t zero_array_8;
     uint8x16_t one_array;
     uint8_t select[8];
+    uint8x16_t positive_select;
+    uint8x16_t negative_select;
     uint8x16_t min_thresh;
     uint8x16_t max_thresh;
 };
@@ -295,6 +297,8 @@ void green_detector_init(void) {
   for (int i = 0; i < 8; i++) {
     gto.select[i] = pow(2, i);
   }
+  gto.positive_select = vdupq_n_u8(136);
+  gto.negative_select = vdupq_n_u8(119);
 #endif
 }
 
@@ -468,7 +472,8 @@ void get_regions(struct image_t *img, float* regions) {
   uint8x8_t first_add_low_array[4];
   uint8x8_t first_add_high_array[4];
   uint8x16_t second_add_array[2];
-  uint8x16_t region_array[2];
+  uint8x16_t region_array_pos[2];
+  uint8x16_t region_array_neg[2];
 
   uint8x16_t slice_2;
 
@@ -480,6 +485,7 @@ void get_regions(struct image_t *img, float* regions) {
     for (uint8_t k = 0; k < 2; k++) {
       uint8x16_t greater_combined = gto.zero_array; // A uint8 vector with 16 values of which every bit represents a y, u or v value
       uint8x16_t smaller_combined = gto.zero_array; // A uint8 vector with 16 values of which every bit represents a y, u or v value
+      uint8x16_t positive, negative;
       for (uint8_t i = 0; i < 8; i++) {
         for (uint8_t j = 0; j < 4; j++) {
 
@@ -567,16 +573,25 @@ void get_regions(struct image_t *img, float* regions) {
       uint8x16_t check_3 = vandq_u8(check_1, check_2);
 
       // Pop count
-      region_array[k] = vcntq_u8(check_3);
+      positive = vbslq_u8(gto.positive_select, check_3, gto.zero_array);
+      negative = vbslq_u8(gto.negative_select, check_3, gto.zero_array);
+      region_array_pos[k] = vcntq_u8(positive);
+      region_array_neg[k] = vcntq_u8(negative);
     }
     // Add together green pixels
-    uint8x16_t first_region_add = vaddq_u8(region_array[0], region_array[1]);
-    uint8x8_t first_region_add_low = vget_low_u8(first_region_add);
-    uint8x8_t first_region_add_high = vget_high_u8(first_region_add);
-    uint8x8_t fr_4 = vadd_u8(first_region_add_low, first_region_add_high);
+    uint8x16_t first_region_add_pos = vaddq_u8(region_array_pos[0], region_array_pos[1]);
+    uint8x8_t first_region_add_low_pos = vget_low_u8(first_region_add_pos);
+    uint8x8_t first_region_add_high_pos = vget_high_u8(first_region_add_pos);
+    uint8x8_t fr_4_pos = vadd_u8(first_region_add_low_pos, first_region_add_high_pos);
+
+    uint8x16_t first_region_add_neg = vaddq_u8(region_array_neg[0], region_array_neg[1]);
+    uint8x8_t first_region_add_low_neg = vget_low_u8(first_region_add_neg);
+    uint8x8_t first_region_add_high_neg = vget_high_u8(first_region_add_neg);
+    uint8x8_t fr_4_neg = vadd_u8(first_region_add_low_neg, first_region_add_high_neg);
 
     // Add the bottom 6 block and subtract the top 2 blocks
-    regions[region_id] = (float)(fr_4[1] + fr_4[5] + fr_4[2]) - (float)fr_4[4];
+    regions[region_id] = (float)(fr_4_pos[2] + fr_4_pos[3] + fr_4_pos[6] + fr_4_pos[7]) -
+                         (float)(fr_4_neg[2] + fr_4_neg[3] + fr_4_neg[6] + fr_4_neg[7]);
   }
 }
 

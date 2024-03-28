@@ -19,7 +19,7 @@
 #define PAINT_OVER_IMAGE_AVERAGED TRUE
 
 // Enables vector optimization
-#define SIMD_ENABLED TRUE
+#define SIMD_ENABLED FALSE
 
 #if SIMD_ENABLED == TRUE
 #include "arm_neon.h"
@@ -127,14 +127,14 @@ void apply_threshold(struct image_t *img, uint32_t *green_pixels,
                      uint8_t cr_min, uint8_t cr_max);
 
 void set_hysteresis_template(float *local_hysteresis_template_p, uint16_t width);
+void get_direction(float* regions, float* local_hysteresis_template_p,
+                        uint16_t old_direction, uint16_t* new_direction, float* safe_length, uint32_t* green_pixels);
 #if SIMD_ENABLED
 uint8x16_t average_block(struct image_t *img, uint32_t location);
 void get_regions(struct image_t *img, float* regions);
-void get_direction_simd(float* regions, float* local_hysteresis_template_p,
-                        uint16_t old_direction, uint16_t* new_direction, float* safe_length, uint32_t* green_pixels);
 static void green_filter(struct image_t* original_image, struct image_t* filtered_image);
 #else
-void get_direction(struct image_t* original_image, float* best_heading, float* safe_length, uint32_t* green_pixels);
+void get_regions(struct image_t* original_image, float* regions);
 #endif
 
 // Create telemetry message
@@ -167,7 +167,7 @@ static struct image_t *green_heading_finder(struct image_t *img)
     uint16_t new_direction = 0;
 
     clock_t start = clock();
-    #if SIMD_ENABLED == TRUE
+    #if SIMD_ENABLED
       // Update threshold arrays, when thresholds change
       if (local_lum_min + local_lum_max + local_cb_min +
           local_cb_max + local_cr_min + local_cr_max !=
@@ -194,17 +194,19 @@ static struct image_t *green_heading_finder(struct image_t *img)
         gto.min_thresh = vld1q_u8(min_thresh_pointer);
         gto.max_thresh = vld1q_u8(max_thresh_pointer);
       }
+    #endif
 
       float regions[16];
       memset(&regions, 0, 16*sizeof(float));
 
-      get_regions(img, &regions[0]);
-      get_direction_simd(&regions[0], &hysteresis_template_p[0],
+      get_regions(img, regions);
+      get_direction(regions, hysteresis_template_p,
                          old_direction, &new_direction, &safe_length, &green_pixels);
 
       old_direction = new_direction;
       best_heading = ((float)new_direction - 8.0f) * 0.065;
 
+    #if SIMD_ENABLED
       // Visualize
       if (visualize == 1) {
         struct image_t filtered_image;
@@ -219,13 +221,8 @@ static struct image_t *green_heading_finder(struct image_t *img)
                         local_cb_min, local_cb_max,
                         local_cr_min, local_cr_max);
       }
-
-    #else
-      get_direction(img, &best_heading, &safe_length, &green_pixels);
-
-
-
     #endif
+
     clock_t end = clock();
 
     pthread_mutex_lock(&mutex);
@@ -267,11 +264,11 @@ void green_detector_init(void) {
 
   cv_add_to_device(&GREENFILTER_CAMERA, green_heading_finder1, GREENFILTER_FPS, 0);
 
-  // Initialize the SIMD parameters
-#if SIMD_ENABLED == TRUE
   hysteresis_template_p = malloc(2*16*sizeof(float));
   set_hysteresis_template(hysteresis_template_p, hysteresis_width);
 
+  // Initialize the SIMD parameters
+#if SIMD_ENABLED
   // Set Threshold arrays
   uint8_t min_thresh_array[16] = {gd_cb_min, gd_cb_min, gd_lum_min, gd_lum_min,
                                   gd_cr_min, gd_cr_min, gd_lum_min, gd_lum_min,
@@ -401,7 +398,7 @@ static void green_filter(struct image_t* original_image, struct image_t* filtere
 
         filtered_buffer[row * filtered_image->w + col] = true;
 
-#if PAINT_OVER_IMAGE_AVERAGED
+#if PAINT_OVER_IMAGE_AVERAGED && !SIMD_ENABLED
         // Go over all pixels in kernel and adjust them color to resemble valid pixels
         for (uint8_t row_in_kernel=0; row_in_kernel<kernel_size_h; row_in_kernel++) {
           for (int8_t col_in_kernel=0; col_in_kernel<kernel_size_w; col_in_kernel++) {
@@ -443,6 +440,37 @@ void set_hysteresis_template(float *local_hysteresis_template_p, uint16_t width)
     uint8_t measure_point = 16 - width/2 + i;
     local_hysteresis_template_p[measure_point] = average + (amplitude * cos(4 * ((float)measure_point - 16) / (float)width));
   }
+}
+
+void get_direction(float* regions, float* local_hysteresis_template_p,
+                        uint16_t old_direction, uint16_t* new_direction, float* safe_length, uint32_t* green_pixels) {
+  // Calculates the direction the drone should go using the weighing function and regions
+  uint16_t local_new_direction = 0;
+  uint32_t local_green_pixels = 0;
+  float weighted_regions[16];
+  float local_safe_length = 0;
+
+  for (uint16_t i = 0; i < 16; i++) {
+    // Apply weights
+    uint16_t array_location = i + 16 - old_direction;
+    float average_weighting = (gain_previous_heading * local_hysteresis_template_p[array_location] +
+                               gain_centre * local_hysteresis_template_p[i + 8]) / (gain_previous_heading + gain_centre);
+    weighted_regions[i] = (regions[i] * average_weighting);
+
+    // Count up all the green pixels
+    if (regions[i] >= 0) {  // NOTE: [Aaron] Only cast to uint if the region has positive value (otherwise would underflow)
+      local_green_pixels += (uint32_t)regions[i];
+    }
+
+    // Find maximum
+    if (weighted_regions[i] > weighted_regions[local_new_direction]) {
+      local_new_direction = i; // Set new direction (not the same as heading)
+      local_safe_length = regions[i]; // Set new safe length
+    }
+  }
+  *new_direction = local_new_direction;
+  *safe_length = local_safe_length;
+  *green_pixels = local_green_pixels * 60; // 60 to make it comparable to the old green follower!!
 }
 
 #if SIMD_ENABLED == TRUE
@@ -563,122 +591,42 @@ void get_regions(struct image_t *img, float* regions) {
     regions[region_id] = (float)(sra[2] + sra[6] + sra[10] + sra[14]);
   }
 }
-
-void get_direction_simd(float* regions, float* local_hysteresis_template_p,
-                        uint16_t old_direction, uint16_t* new_direction, float* safe_length, uint32_t* green_pixels) {
-  // Calculates the direction the drone should go using the weighing function and regions
-  uint16_t local_new_direction = 0;
-  uint32_t local_green_pixels = 0;
-  float weighted_regions[16];
-  float local_safe_length = 0;
-
-  for (uint16_t i = 0; i < 16; i++) {
-    // Apply weights
-    uint16_t array_location = i + 16 - old_direction;
-    float average_weighting = (gain_previous_heading * local_hysteresis_template_p[array_location] +
-                               gain_centre * local_hysteresis_template_p[i + 8]) / (gain_previous_heading + gain_centre);
-    weighted_regions[i] = (regions[i] * average_weighting);
-
-    // Count up all the green pixels
-    local_green_pixels += (uint32_t)regions[i];
-
-    // Find maximum
-    if (weighted_regions[i] > weighted_regions[local_new_direction]) {
-      local_new_direction = i; // Set new direction (not the same as heading)
-      local_safe_length = regions[i]; // Set new safe length
-    }
-  }
-  *new_direction = local_new_direction;
-  *safe_length = local_safe_length;
-  *green_pixels = local_green_pixels * 60; // 60 to make it comparable to the old green follower!!
-}
-
+                        
 #else
-void get_direction(struct image_t* original_image, float* best_heading, float* safe_length, uint32_t* green_pixels) {
-
-	// Array where ray scores will be added
-	float ray_scores[7] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+void get_regions(struct image_t* original_image, float* regions) {
 
 	// Array which will contain the filtered image
   struct image_t filtered_image;
   image_create(&filtered_image, original_image->w / kernel_size_w, original_image->h / kernel_size_h, IMAGE_BOOL);
   // Ptr to the filtered buffer
-  uint8_t *filtered_buffer = &(filtered_image.buf);
+  uint8_t *filtered_buffer = filtered_image.buf;
 
 	// Apply filter to original image
 	green_filter(original_image, &filtered_image);
 
-	// // Go through each pixel in the filtered image
-	// // and determine which ray it belongs to
-	// for (uint16_t row=0; row<filtered_image.h; row++) {
-	// 	for (uint16_t col=0; col<filtered_image.w; col++) {
-	// 		if (filtered_buffer[row * filtered_image.w + col] == true) {
-
-	// 			// Add a count to the number of green pixels
-	// 			*green_pixels += 1;
-
-	// 			// Determine which ray the pixel belongs to
-  //       // NOTE: [Aaron] Can be made more efficient with a lookup table
-	// 			float angle = (float) atan2((double) col * kernel_size_w, (double) (row - filtered_image.h / 2) * kernel_size_h);
-
-	// 			uint8_t err_angle_min_idx = 0;
-	// 			float err_angle_min = 2.0 * M_PI;
-	// 			for (uint8_t i=0; i<7; i++) {
-	// 				float err_angle = fabsf(angle - ray_angles[i]);
-	// 				if (err_angle < err_angle_min) {
-	// 					err_angle_min_idx = i;
-	// 					err_angle_min = err_angle;
-	// 				}
-	// 			}
-
-	// 			// Add a score to the corresponding ray
-	// 			ray_scores[err_angle_min_idx] += 1.0f;
-	// 		}
-	// 	}
-	// }
-
   // Go through each pixel in the filtered image
 	// and determine the number of valid large pixels in each vertical band of 4 large pixels wide (=region?)
-  float[16] regions;
-  memset(&regions, 0, 16*sizeof(float));
+  memset(regions, 0, 16*sizeof(float));
   for (uint16_t region=0; region<filtered_image.h / 4; region++) {
     for (uint16_t row_in_region=0; row_in_region<4; row_in_region++) {
-		  for (uint16_t col=0; col<filtered_image.w; col++) {
+		  for (uint16_t col=0; col<11; col++) {
         if (filtered_buffer[(region*4 + row_in_region) * filtered_image.w + col] == true) {
           // Add a count to the corresponding region
           regions[region] += 1.0f;
         }
 		  }
+      for (uint16_t col=11; col<filtered_image.w; col++) {
+        if (filtered_buffer[(region*4 + row_in_region) * filtered_image.w + col] == true) {
+          // Subtract a count to the corresponding region
+          regions[region] -= 1.0f;
+        }
+      }
     }
 	}
 
 	// Deallocate memory
   image_free(&filtered_image);
 
-	// Go through ray scores, multiplying by corresponding weights and keep track of ray with highest score
-	uint8_t best_heading_idx=0;
-	float best_heading_score = 0.0f;
-	for (uint8_t i=0; i<7; i++) {
-		float score = ray_scores[i] * ray_weights[i];
-		if (score > best_heading_score) {
-			*safe_length = score;
-			best_heading_score = score;
-			best_heading_idx = i;
-		}
-	}
-
-	// Assign remaining results
-	*best_heading = M_PI/2 - ray_angles[best_heading_idx];
-  VERBOSE_PRINT("Best ray angle [deg]: %f\n", *best_heading * 180.0f / M_PI);
-
-	*green_pixels = *green_pixels * kernel_size_w * kernel_size_h;
-  // VERBOSE_PRINT("GF: total pixels %d\n", *green_pixels);
 }
-
-
-
-
-
-
 
 #endif

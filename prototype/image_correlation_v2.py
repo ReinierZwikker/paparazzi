@@ -1,3 +1,5 @@
+# Written by Reinier Zwikker
+
 from PIL import Image
 from os import walk, mkdir
 import numpy as np

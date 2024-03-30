@@ -15,6 +15,11 @@ extern uint8_t gd_cb_max;
 extern uint8_t gd_cr_min;
 extern uint8_t gd_cr_max;
 
+extern uint8_t visualize;
+
+extern float gain_centre;
+extern float gain_previous_heading;
+
 extern float weight_function;
 
 extern void green_detector_init(void);

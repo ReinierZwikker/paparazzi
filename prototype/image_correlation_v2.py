@@ -1,3 +1,5 @@
+# Written by Reinier Zwikker
+
 from PIL import Image
 from os import walk, mkdir
 import numpy as np
@@ -6,8 +8,8 @@ import pandas as pd
 
 
 selected_images = range(105, 140)  # 'all' or specific [###, ###, ..., ###] or range(start, stop, step)
-amount_of_steps = 25
-slice_size = 50
+amount_of_steps = 15
+slice_size = 16
 
 slice_extend = int(slice_size / 2)
 
@@ -31,7 +33,7 @@ locations = []      # Location of Eval points in [x,y]
 directions = []     # (Positive) Eval direction in [dx,dy]
 dependencies = []   # 0 for radial (forward motion), 1 for sideways motion (+ towards right)
 
-radial_lists = [[[-30, -15, 0, 15, 30, 150, 165, 180, -165, -150], [30, 60, 90, 120, 140, 160, 180, 210]],
+radial_lists = [[[-30, -15, 0, 15, 30, 150, 165, 180, -165, -150], [30, 60, 90, 120, 140, 160, 175, 195]],
                 [[-22, -7, 7, 22, 158, 173, -173, -158], [120, 140, 160, 180, 210]],
                 [[65, 90, 115, -45, -60, -75, -90, -105, -120, -135], [40, 60, 80]]]
 

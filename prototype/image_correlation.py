@@ -1,3 +1,5 @@
+# Written by Reinier Zwikker
+
 import os
 import random
 

@@ -26,7 +26,7 @@
 #include <math.h>
 #include <time.h>
 
-#define GREEN_FOLLOWER_VERBOSE TRUE
+#define GREEN_FOLLOWER_VERBOSE FALSE
 
 #define PRINT(string,...) fprintf(stderr, "[green_follower->%s()] " string,__FUNCTION__ , ##__VA_ARGS__)
 #if GREEN_FOLLOWER_VERBOSE
@@ -37,7 +37,7 @@
 
 // define settings
 float gf_set_speed = 0.4f;           // max flight speed [m/s]
-float gf_floor_count_frac = 0.01f;  // percentage of the image that needs to be green before turning around
+float gf_floor_count_frac = 0.1f;  // percentage of the image that needs to be green before turning around
 float gf_sideways_speed_factor = 0.25f;  // Oversteer correction
 float gf_set_height = 0.5f;
 float gf_height_gain = 0.1f;
@@ -120,30 +120,41 @@ void green_follower_periodic(void)
       float speed_sp = fminf(gf_set_speed, current_safe_length / 100);
 
         //VERBOSE_PRINT("GF: Moving from %f towards %f (d=%f) at %f\n", stateGetNedToBodyEulers_f()->psi, stateGetNedToBodyEulers_f()->psi + current_best_heading_green, current_best_heading_green, speed_sp);
-      float heading_sp = current_best_heading_green + current_best_heading_corr;
-      //heading_sp = 0.7*previous_best_heading + 0.3*heading_sp;
-      if (fabs(heading_sp) <= M_PI/6) {
-        if (fabs(heading_sp-previous_best_heading)<=15*M_PI/180) {
-          guidance_h_set_body_vel(speed_sp, 0);
-          guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + 0);
-          previous_best_heading = 0;
-        } else {
-          heading_sp = 0.5*previous_best_heading + 0.5*heading_sp;
-          guidance_h_set_body_vel(speed_sp, gf_sideways_speed_factor * heading_sp);
-          guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
-          previous_best_heading = heading_sp;
-        }
+      float heading_sp;
+      if (current_best_heading_green < 0.05) {
+        heading_sp = current_best_heading_green + current_best_heading_corr;
       } else {
-        if (fabs(heading_sp-previous_best_heading) < M_PI/2) {
-          guidance_h_set_body_vel(0.5f * speed_sp, gf_sideways_speed_factor * heading_sp);
-          guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
-          previous_best_heading = heading_sp;
-        } else {
-          guidance_h_set_body_vel(0.5f * speed_sp, 0);
-          guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + previous_best_heading);
-          previous_best_heading = previous_best_heading;
-        }
+        heading_sp = current_best_heading_green;
       }
+//      float heading_sp = current_best_heading_corr;
+      //heading_sp = 0.7*previous_best_heading + 0.3*heading_sp;
+//      if (fabs(heading_sp) <= M_PI/6) {
+//        if (fabs(heading_sp-previous_best_heading)<=15*M_PI/180) {
+//          guidance_h_set_body_vel(speed_sp, 0);
+//          guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + 0);
+//          previous_best_heading = 0;
+//        } else {
+//          heading_sp = 0.5*previous_best_heading + 0.5*heading_sp;
+//          guidance_h_set_body_vel(speed_sp, gf_sideways_speed_factor * heading_sp);
+//          guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
+//          previous_best_heading = heading_sp;
+//        }
+//      } else {
+//        if (fabs(heading_sp-previous_best_heading) < M_PI/2) {
+//          guidance_h_set_body_vel(0.5f * speed_sp, gf_sideways_speed_factor * heading_sp);
+//          guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
+//          previous_best_heading = heading_sp;
+//        } else {
+//          guidance_h_set_body_vel(0.5f * speed_sp, 0);
+//          guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + previous_best_heading);
+//          previous_best_heading = previous_best_heading;
+//        }
+//      }
+
+      heading_sp = 0.4*previous_best_heading + 0.6*heading_sp;
+      guidance_h_set_body_vel(speed_sp, gf_sideways_speed_factor * heading_sp);
+      guidance_h_set_heading(stateGetNedToBodyEulers_f()->psi + heading_sp);
+      previous_best_heading = heading_sp;
 
 
       //guidance_h_set_body_vel(speed_sp, gf_sideways_speed_factor * heading_sp);

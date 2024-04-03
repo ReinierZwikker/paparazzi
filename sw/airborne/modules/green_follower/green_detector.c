@@ -214,7 +214,7 @@ static struct image_t *green_heading_finder(struct image_t *img)
         struct image_t filtered_image;
         image_create(&filtered_image, img->w / kernel_size_w, img->h / kernel_size_h, IMAGE_BOOL);
         green_filter(img, &filtered_image);
-        img = &filtered_image;
+        image_copy(&filtered_image, img);
       }
       else if (visualize == 2) {
         uint32_t dummy_green_pixels;

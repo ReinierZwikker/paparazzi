@@ -1,3 +1,11 @@
+# SPECIFIC README OF GROUP 4
+
+Repository for the implementation of group 4 for the Flight of Micro Aerial Vehicles course. 
+It implements the Green Detector, Corr Depth Finder, and Green Follower modules and configures them in the airframe 'bebop_course_corr_depth_finder.xml'. 
+It uses an edited version of 'course_orangeavoid_cyberzoo_guided.xml' as flight plan.
+
+It also implements some custom messages in the ABI protocol and in PPRZ Link, in order to send tuning data back to the GCS.
+
 # MAIN README
 
 Paparazzi UAS

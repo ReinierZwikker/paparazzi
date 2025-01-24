@@ -72,6 +72,7 @@ class InstallWindow(QWidget):
         self.execute('sudo -E cp conf/system/udev/rules/*.rules /etc/udev/rules.d/ && sudo -E udevadm control --reload-rules')
 
     def cmd_gazebo(self):
+        self.execute('sudo -E apt-get update')
         if float(release['release']) > 20.04:
             self.execute('sudo -E apt-get -f -y install gazebo libgazebo-dev')
         else:
